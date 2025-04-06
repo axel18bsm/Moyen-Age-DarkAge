@@ -1,5 +1,6 @@
 # MoyenAge - Dark Age
-Wargame fashioned old school in the darkAges.
+Wargame fashioned old school in the darkAges. You can execute, but movement and figthing are 
+not implemented.
 
 
 Some pictures of the game
