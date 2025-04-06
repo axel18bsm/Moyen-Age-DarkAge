@@ -1,0 +1,36 @@
+id				; le numero de l hexagone
+number			; identique que id
+centerx			; point x du centre de l hexagone
+centery			; point y du centre de l hexagone
+colorr			; couleur rouge de l hexagone, si une seule couleur
+colorg			; couleur green de l hexagone, si une seule couleur
+colorb			; couleur bleu de l hexagone, si une seule couleur
+colorptr		; couleur rouge du point central de l hexagone, permet de determiner le type de terrain
+colorptg		; couleur vert du point central de l hexagone, permet de determiner le type de terrain
+colorptb		; couleur bleu du point central de l hexagone, permet de determiner le type de terrain
+bselected		; est ce que cet hexagone est selectionné ?
+colonne			; cet hexagone faite partie de ce nunéro de colonne
+ligne			; cet hexagone faite partie de ce nunéro de ligne
+emplacement		; ou se trouve cet hexagone sur la carte, dans un coin, sur un bord, classic
+pairouimpair	; permet de mieux calculer ses voisins.
+vertex1x		; point x du 1er vertex
+vertex1y		; point y du 1er vertex
+vertex2x		; point x du 2eme vertex
+vertex2y		; point y du 2eme vertex
+vertex3x		; point x du 3eme vertex
+vertex3y		; point y du 3eme vertex
+vertex4x		; point x du 4eme vertex
+vertex4y		; point y du 4eme vertex
+vertex5x		; point x du 5eme vertex
+vertex5y		; point y du 5eme vertex
+vertex6x		; point x du 6eme vertex
+vertex6y		; point y du 6eme vertex
+Neighbor1		; voisin au nord si 0, il y en a pas
+Neighbor2		; voisin au nord-est  si 0, il y en a pas
+Neighbor3		; voisin au sud-est   si 0, il y en a pas
+Neighbor4		; voisin au sud  si 0, il y en a pas
+Neighbor5		; voisin au sud-ouest  si 0, il y en a pas
+Neighbor6		; voisin au nord-ouest  si 0, il y en a pas
+route			;  y a t il une route dans cet hexagone
+type			; type de terrain
+objet			; y a t il un objet, 5000 , c est une tour, 10000 c est une case de victoire.
