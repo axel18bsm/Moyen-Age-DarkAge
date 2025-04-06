@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CONFIG>
+  <ProjectSession>
+    <PathDelim Value="\"/>
+    <Version Value="12"/>
+    <BuildModes Active="Default"/>
+    <Units>
+      <Unit>
+        <Filename Value="moyenage.lpr"/>
+        <IsPartOfProject Value="True"/>
+        <TopLine Value="13"/>
+        <CursorPos Y="36"/>
+        <UsageCount Value="214"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="init.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="Init"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="6"/>
+        <TopLine Value="466"/>
+        <CursorPos X="40" Y="479"/>
+        <UsageCount Value="207"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="raygui.pas"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="3"/>
+        <TopLine Value="576"/>
+        <CursorPos X="10" Y="592"/>
+        <UsageCount Value="202"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="raylib.pas"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="7"/>
+        <TopLine Value="1770"/>
+        <CursorPos X="10" Y="1836"/>
+        <UsageCount Value="202"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="raymath.pas"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="-1"/>
+        <WindowIndex Value="-1"/>
+        <TopLine Value="-1"/>
+        <CursorPos X="-1" Y="-1"/>
+        <UsageCount Value="202"/>
+      </Unit>
+      <Unit>
+        <Filename Value="unitprocfunc.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="UnitProcFunc"/>
+        <EditorIndex Value="1"/>
+        <TopLine Value="235"/>
+        <CursorPos Y="235"/>
+        <UsageCount Value="202"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="gamemanager.pas"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="GameManager"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="647"/>
+        <CursorPos Y="667"/>
+        <FoldState Value=" T3wN06H"/>
+        <UsageCount Value="155"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="c:\lazarus4\fpc\3.2.2\source\rtl\inc\strings.pp"/>
+        <UnitName Value="Strings"/>
+        <EditorIndex Value="8"/>
+        <CursorPos X="43" Y="5"/>
+        <UsageCount Value="103"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="c:\lazarus4\onlinepackagemanager\packages\Ray4Laz\source\raylib.pas"/>
+        <EditorIndex Value="5"/>
+        <TopLine Value="1517"/>
+        <CursorPos X="87" Y="1545"/>
+        <UsageCount Value="103"/>
+        <Loaded Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="c:\lazarus\fpc\3.2.2\source\rtl\objpas\math.pp"/>
+        <UnitName Value="Math"/>
+        <EditorIndex Value="4"/>
+        <CursorPos X="10" Y="2523"/>
+        <UsageCount Value="57"/>
+        <Loaded Value="True"/>
+      </Unit>
+    </Units>
+    <JumpHistory HistoryIndex="29">
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="836" TopLine="810"/>
+      </Position>
+      <Position>
+        <Filename Value="gamemanager.pas"/>
+        <Caret Line="467" TopLine="452"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="822" TopLine="810"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="823" TopLine="810"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="825" Column="63" TopLine="810"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="826" TopLine="810"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="827" TopLine="810"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="828" TopLine="810"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="829" TopLine="810"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="830" TopLine="810"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="490" Column="30" TopLine="474"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="390" Column="27" TopLine="378"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="833" Column="36" TopLine="818"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="834" TopLine="818"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="836" Column="9" TopLine="818"/>
+      </Position>
+      <Position>
+        <Filename Value="gamemanager.pas"/>
+        <Caret Line="616" Column="64" TopLine="592"/>
+      </Position>
+      <Position>
+        <Filename Value="gamemanager.pas"/>
+        <Caret Line="610" Column="23" TopLine="592"/>
+      </Position>
+      <Position>
+        <Filename Value="gamemanager.pas"/>
+        <Caret Line="613" TopLine="592"/>
+      </Position>
+      <Position>
+        <Filename Value="gamemanager.pas"/>
+        <Caret Line="616" TopLine="592"/>
+      </Position>
+      <Position>
+        <Filename Value="gamemanager.pas"/>
+        <Caret Line="619" TopLine="593"/>
+      </Position>
+      <Position>
+        <Filename Value="gamemanager.pas"/>
+        <Caret Line="620" TopLine="594"/>
+      </Position>
+      <Position>
+        <Filename Value="gamemanager.pas"/>
+        <Caret Line="667" TopLine="647"/>
+      </Position>
+      <Position>
+        <Filename Value="moyenage.lpr"/>
+        <Caret Line="33" TopLine="6"/>
+      </Position>
+      <Position>
+        <Filename Value="moyenage.lpr"/>
+        <Caret Line="34" TopLine="7"/>
+      </Position>
+      <Position>
+        <Filename Value="moyenage.lpr"/>
+        <Caret Line="36" TopLine="11"/>
+      </Position>
+      <Position>
+        <Filename Value="moyenage.lpr"/>
+        <Caret Line="40" TopLine="13"/>
+      </Position>
+      <Position>
+        <Filename Value="moyenage.lpr"/>
+        <Caret Line="36" TopLine="13"/>
+      </Position>
+      <Position>
+        <Filename Value="moyenage.lpr"/>
+        <Caret Line="38" TopLine="13"/>
+      </Position>
+      <Position>
+        <Filename Value="moyenage.lpr"/>
+        <Caret Line="36" TopLine="13"/>
+      </Position>
+      <Position>
+        <Filename Value="init.pas"/>
+        <Caret Line="824" TopLine="816"/>
+      </Position>
+    </JumpHistory>
+    <RunParams>
+      <FormatVersion Value="2"/>
+      <Modes ActiveMode=""/>
+    </RunParams>
+  </ProjectSession>
+</CONFIG>
