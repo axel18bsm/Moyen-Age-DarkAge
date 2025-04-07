@@ -1,6 +1,6 @@
 # MoyenAge - Dark Age
 Wargame fashioned old school in the darkAges. You can execute, but movement and figthing are 
-not implemented.
+not implemented. Nearly finished state : Setup of units.
 
 
 Some pictures of the game
@@ -12,7 +12,8 @@ Some pictures of the game
 
 ![image](https://github.com/user-attachments/assets/042582eb-4936-4f64-8de0-85fa4fdbd475)
 
-![image](https://github.com/user-attachments/assets/301ef17d-bdf7-4397-ba22-1557eddfd8bd)
+![image](https://github.com/user-attachments/assets/87c45e7a-f373-4ba4-8b78-6985e7876929)
+
 
 
 
