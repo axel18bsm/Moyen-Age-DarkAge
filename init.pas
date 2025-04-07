@@ -109,6 +109,7 @@ type
     gsCheckVictory,          // Vérification des conditions de victoire
     gsGameOver,              // Fin du jeu
     gsplayerturn             // Attente
+
   );
 
   TTerrainColor = record
@@ -146,7 +147,15 @@ type
     AttackerSetup: LongInt;     // 0 = Random, 1 = Manuel
     DefenderType: LongInt;      // 0 = Humain, 1 = IA
     DefenderSetup: LongInt;     // 0 = Random, 1 = Manuel
+    AttackerUnitsPlaced: Boolean; // Indique si les unités attaquantes ont été positionnées
+  SelectedUnitID: Integer; // ID de l'unité sélectionnée (-1 si aucune unité sélectionnée)
+    ErrorMessage: string; // Message d'erreur temporaire pour le GUI bas
     Units: array[1..MAX_UNITS] of TUnit; // Toutes les unités des deux armées
+    IsOccupied: Boolean; // Indique si un hexagone est occupé
+  HexOccupiedByAttacker: Boolean; // Indique si un hexagone est occupé par une unité attaquante
+  IsSpecialUnit: Boolean; // Indique si l'unité est un Lieutenant ou un Duc
+  MouseInitialized: Boolean; // Indique si mousePos a été initialisé pour DragAndDropCarte2D;
+  IsDragging: Boolean; // Indique si un glisser-déposer est en cours;
   end;
 
   // Type pour représenter un hexagone
@@ -375,122 +384,105 @@ begin
 end;
 
 
-
-
-procedure InitializePlayerUnits;
+ procedure InitializePlayerUnits;
 var
-  i, j, k, unitCount: Integer;
-  unitType: TtpUnite;
-  found: Boolean;
+  i, k, unitCount: Integer;
   filePathAbime: string;
+  defaultImage: TImage;
 begin
   unitCount := 0;
+
+  // Charger une image par défaut robuste
+
 
   // Initialiser toutes les unités dans l'ordre (attaquant puis défenseur)
   for i := 1 to 17 do // 17 entrées dans ArmeeEntries
   begin
-    // Trouver le type d'unité correspondant
-
+    // Créer le nombre d'unités spécifié
+    for k := 1 to ArmeeEntries[i].Nombre do
     begin
-      // Créer le nombre d'unités spécifié
-      for k := 1 to ArmeeEntries[i].Nombre do
+      unitCount := unitCount + 1;
+      Game.Units[unitCount].Id := unitCount; // ID unique pour chaque unité
+      Game.Units[unitCount].TypeUnite := UnitTypes[i];
+      Game.Units[unitCount].lenom := unitTypes[i].lenom;
+      Game.Units[unitCount].numplayer := ArmeeEntries[i].NumArmee; // 1 pour attaquant, 2 pour défenseur
+      Game.Units[unitCount].Force := UnitTypes[i].forceInitiale;
+      Game.Units[unitCount].DistCombatMax := UnitTypes[i].distanceCombatMaxi;
+      Game.Units[unitCount].DistCombatMin := UnitTypes[i].distanceCombatMini;
+      Game.Units[unitCount].EtatUnite := 1; // Entière
+      Game.Units[unitCount].vitesseInitiale := UnitTypes[i].vitesse;
+      Game.Units[unitCount].vitesseActuelle := 0;
+      Game.Units[unitCount].visible := True;
+      Game.Units[unitCount].HexagoneActuel := -1; // Pas encore positionné
+      Game.Units[unitCount].HexagonePrevious := -1;
+      Game.Units[unitCount].HexagoneCible := -1;
+      Game.Units[unitCount].selectionne := False;
+      Game.Units[unitCount].hasStopped := False;
+      Game.Units[unitCount].hasMoved := False;
+      Game.Units[unitCount].MustMove := False;
+      // Initialiser les champs supplémentaires
+      Game.Units[unitCount].BtnPerim := RectangleCreate(0, 0, 0, 0);
+      Game.Units[unitCount].PositionActuelle := Vector2Create(0, 0);
+      Game.Units[unitCount].positionInitiale := Vector2Create(0, 0);
+      Game.Units[unitCount].positionFinale := Vector2Create(0, 0);
+
+      // Charger les images
+      if Game.Units[unitCount].numplayer = 1 then
       begin
-        unitCount := unitCount + 1;
-        Game.Units[unitCount].Id := unitCount; // ID unique pour chaque unité
-        Game.Units[unitCount].TypeUnite :=UnitTypes[i];
-        Game.Units[unitCount].lenom := unitTypes[i].lenom;
-        Game.Units[unitCount].numplayer := ArmeeEntries[i].NumArmee; // 1 pour attaquant, 2 pour défenseur
-        Game.Units[unitCount].Force :=UnitTypes[i].forceInitiale;
-        Game.Units[unitCount].DistCombatMax := UnitTypes[i].distanceCombatMaxi;
-        Game.Units[unitCount].DistCombatMin := UnitTypes[i].distanceCombatMini;
-        Game.Units[unitCount].EtatUnite := 1; // Entière
-        Game.Units[unitCount].vitesseInitiale := UnitTypes[i].vitesse;
-        Game.Units[unitCount].vitesseActuelle := 0;
-        Game.Units[unitCount].visible := True;
-        Game.Units[unitCount].HexagoneActuel := -1; // Pas encore positionné
-        Game.Units[unitCount].HexagonePrevious := -1;
-        Game.Units[unitCount].HexagoneCible := -1;
-        Game.Units[unitCount].selectionne := False;
-        Game.Units[unitCount].hasStopped := False;
-        Game.Units[unitCount].hasMoved := False;
-        Game.Units[unitCount].MustMove := False;
-        // Initialiser les champs supplémentaires
-        Game.Units[unitCount].BtnPerim := RectangleCreate(0, 0, 0, 0);
-        Game.Units[unitCount].PositionActuelle := Vector2Create(0, 0);
-        Game.Units[unitCount].positionInitiale := Vector2Create(0, 0);
-        Game.Units[unitCount].positionFinale := Vector2Create(0, 0);
-
-        // Charger les images
-        if Game.Units[unitCount].numplayer = 1 then
-        begin
-          Game.Units[unitCount].Fileimagestr := CHEMIN_SOLDAT1;
-        end
-        else
-        begin
-          Game.Units[unitCount].Fileimagestr := CHEMIN_SOLDAT2;
-        end;
-        Game.Units[unitCount].Fileimagestr := Game.Units[unitCount].Fileimagestr + ArmeeEntries[i].FichierE; // Chemin de l'image normale
-        Game.Units[unitCount].Fileimage := PChar(Game.Units[unitCount].Fileimagestr);
-
-        // Construire le chemin complet pour l'image abîmée
-        if Game.Units[unitCount].numplayer = 1 then
-        begin
-          filePathAbime := CHEMIN_SOLDAT1 + ArmeeEntries[i].FichierD;
-        end
-        else
-        begin
-          filePathAbime := CHEMIN_SOLDAT2 + ArmeeEntries[i].FichierD;
-        end;
-        Game.Units[unitCount].FileimageAbime := PChar(filePathAbime);
-
-        // Charger l'image et la texture
-        Game.Units[unitCount].limage := LoadImage(Game.Units[unitCount].Fileimage);
-        if Game.Units[unitCount].limage.data = nil then
-        begin
-          WriteLn('Erreur : Impossible de charger l''image ', Game.Units[unitCount].Fileimage, ' pour l''unité ', unitCount);
-          Game.Units[unitCount].limage := LoadImage('resources/default.png'); // Image par défaut en cas d'erreur
-        end;
-
-        Game.Units[unitCount].latexture := LoadTextureFromImage(Game.Units[unitCount].limage);
-        if Game.Units[unitCount].latexture.id = 0 then
-        begin
-          WriteLn('Erreur : Impossible de charger la texture pour l''unité ', unitCount);
-        end;
-
-        // Ajout de logs pour chaque unité
-        WriteLn('Unité ', unitCount, ' initialisée :');
-        WriteLn('  Type : ', Game.Units[unitCount].lenom);
-        WriteLn('  Numplayer : ', Game.Units[unitCount].numplayer);
-        WriteLn('  Fileimage : ', Game.Units[unitCount].Fileimage);
-        WriteLn('  Texture ID : ', Game.Units[unitCount].latexture.id);
-        WriteLn('  Force : ', Game.Units[unitCount].Force);
-        WriteLn('  VitesseInitiale : ', Game.Units[unitCount].vitesseInitiale);
-
-        // Calculer la moitié de la largeur et de la hauteur de la texture
-        Game.Units[unitCount].TextureHalfWidth := Game.Units[unitCount].latexture.width div 2;
-        Game.Units[unitCount].TextureHalfHeight := Game.Units[unitCount].latexture.height div 2;
-
-        // Mettre à jour BtnPerim (initialement à (0, 0))
-        UpdateUnitBtnPerim(unitCount);
-
-        SetLength(Game.Units[unitCount].points, 0);
+        Game.Units[unitCount].Fileimagestr := CHEMIN_SOLDAT1;
+      end
+      else
+      begin
+        Game.Units[unitCount].Fileimagestr := CHEMIN_SOLDAT2;
       end;
+      Game.Units[unitCount].Fileimagestr := Game.Units[unitCount].Fileimagestr + ArmeeEntries[i].FichierE; // Chemin de l'image normale
+      Game.Units[unitCount].Fileimage := PChar(Game.Units[unitCount].Fileimagestr);
+
+      // Construire le chemin complet pour l'image abîmée
+      if Game.Units[unitCount].numplayer = 1 then
+      begin
+        filePathAbime := CHEMIN_SOLDAT1 + ArmeeEntries[i].FichierD;
+      end
+      else
+      begin
+        filePathAbime := CHEMIN_SOLDAT2 + ArmeeEntries[i].FichierD;
+      end;
+      Game.Units[unitCount].FileimageAbime := PChar(filePathAbime);
+
+      // Charger l'image et la texture
+      Game.Units[unitCount].limage := LoadImage(Game.Units[unitCount].Fileimage);
+      if Game.Units[unitCount].limage.data = nil then
+      begin
+        WriteLn('Erreur : Impossible de charger l''image ', Game.Units[unitCount].Fileimage, ' pour l''unité ', unitCount);
+        Game.Units[unitCount].limage := defaultImage; // Utiliser l'image par défaut
+      end;
+
+      Game.Units[unitCount].latexture := LoadTextureFromImage(Game.Units[unitCount].limage);
+      if Game.Units[unitCount].latexture.id = 0 then
+      begin
+        WriteLn('Erreur : Impossible de charger la texture pour l''unité ', unitCount);
+        Game.Units[unitCount].latexture := LoadTextureFromImage(defaultImage); // Utiliser la texture par défaut
+      end;
+
+      // Calculer la moitié de la largeur et de la hauteur de la texture
+      Game.Units[unitCount].TextureHalfWidth := Game.Units[unitCount].latexture.width div 2;
+      Game.Units[unitCount].TextureHalfHeight := Game.Units[unitCount].latexture.height div 2;
+
+      // Mettre à jour BtnPerim (initialement à (0, 0))
+      UpdateUnitBtnPerim(unitCount);
+
+      SetLength(Game.Units[unitCount].points, 0);
     end;
   end;
 
-  // Positionner le Comte (ID = 59) sur l'hexagone ID = 308
-  CenterUnitOnHexagon(59, 308);
-  CenterUnitOnHexagon(58, 309);
-  CenterUnitOnHexagon(50, 307);
-  CenterUnitOnHexagon(46, 308);
+  // Positionner les unités spécifiques
+  CenterUnitOnHexagon(59, 308); // Comte (défenseur)
+  CenterUnitOnHexagon(58, 309); // Chef Milicien (défenseur)
+  CenterUnitOnHexagon(50, 307); // Cavalier défenseur
+  CenterUnitOnHexagon(45, 308); // Archer défenseur (corrigé : ID = 45, dernier archer défenseur)
 
-  // Log après positionnement du Comte
-  WriteLn('Après CenterUnitOnHexagon pour le Comte (ID = 59) :');
-  WriteLn('  HexagoneActuel : ', Game.Units[59].HexagoneActuel);
-  WriteLn('  PositionActuelle : X=', Game.Units[59].PositionActuelle.x, ' Y=', Game.Units[59].PositionActuelle.y);
+  // Libérer l'image par défaut
 
-  // Log du nombre total d'unités initialisées
-  WriteLn('Nombre total d''unités initialisées : ', unitCount);
 end;
 
 
@@ -810,18 +802,20 @@ end;
 
 procedure chargeressource;
 begin
-  //with Appli do
-  //begin
-  //  Id := 1;
-  //  lenom := 'Noeud, Direction, A*';
-  //  panel := RectangleCreate(1250, 5, 425, 60);
-  //  paneldebugger := RectangleCreate(1250, 5, 425, 60);
-  //  intituleTitre := 'Noeud, Direction, A*';
-  //  intituleParag1 := 'Mode Fonctionnement';
-  //  intituleParag2 := 'Format Node';
-  //  intituleParag3 := 'Format Direction';
-  //  couleursupportTitre := RAYWHITE;
-  //end;
+  UnloadTexture(texture); // Libérer l'ancienne texture
+  image := LoadImage('resources/newlacarte.png');
+  if image.data = nil then
+  begin
+    WriteLn('Erreur : Impossible de charger l''image resources/newlacarte.png');
+    Exit;
+  end;
+  texture := LoadTextureFromImage(image);
+  if texture.id = 0 then
+  begin
+    WriteLn('Erreur : Impossible de charger la texture resources/newlacarte.png');
+    Exit;
+  end;
+  UnloadImage(image); // Libérer l'image après conversion
   Game.Aquitter := False;
   LoadHexagonsFromCSV('resources/hexgridplat.csv');
   DetectWalls(); // Détecter les murs après le chargement des hexagones
@@ -835,7 +829,6 @@ begin
   // ne pas detruire, permet de trouver les rivieres
   LoadRiverPairsFromCSV(); // Charger les paires depuis rivers.csv
   UpdateHexagonsForRivers(); // Mettre à jour les hexagones pour les rivières
-
 end;
 
 procedure initialisezCamera2D;

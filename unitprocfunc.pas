@@ -18,11 +18,201 @@ procedure FloodFillCastle(hexID: Integer);
 procedure DetectWalls;
 procedure MarkCastleHexagons;
 procedure DetectRiverPairsAndSave;
+procedure PositionAttackerUnitsAroundHex(hexID: Integer);
+function SelectUnit(mouseX, mouseY: Single; playerNum: Integer): Integer;
+procedure DrawUnitSelectionFrame;
 
 
 
 
 implementation
+
+function SelectUnit(mouseX, mouseY: Single; playerNum: Integer): Integer;
+var
+  i: Integer;
+  worldPos: TVector2;
+  mouseRect: TRectangle;
+begin
+  Result := -1; // Par défaut, aucune unité sélectionnée
+
+  // Convertir les coordonnées de la souris en coordonnées du monde
+  worldPos := GetScreenToWorld2D(Vector2Create(mouseX, mouseY), camera);
+
+  // Créer un petit rectangle autour de la position de la souris pour la détection
+  mouseRect := RectangleCreate(worldPos.x - 2, worldPos.y - 2, 4, 4);
+
+  // Parcourir toutes les unités pour vérifier si le clic est sur une unité
+  for i := 1 to MAX_UNITS do
+  begin
+    if Game.Units[i].HexagoneActuel >= 0 then // Unité positionnée
+    begin
+      // Vérifier si l'unité appartient au joueur (playerNum)
+      if Game.Units[i].numplayer = playerNum then
+      begin
+        // Vérifier si le clic est dans la zone de l'unité (BtnPerim)
+        if CheckCollisionRecs(mouseRect, Game.Units[i].BtnPerim) then
+        begin
+          Result := i; // Retourner l'ID de l'unité sélectionnée
+          Break;
+        end;
+      end;
+    end;
+  end;
+end;
+
+procedure DrawUnitSelectionFrame;
+begin
+  if Game.SelectedUnitID >= 1 then
+  begin
+    // Dessiner un cadre jaune autour de l'unité sélectionnée
+    DrawRectangleLines(
+      Round(Game.Units[Game.SelectedUnitID].BtnPerim.x),
+      Round(Game.Units[Game.SelectedUnitID].BtnPerim.y),
+      Round(Game.Units[Game.SelectedUnitID].BtnPerim.width),
+      Round(Game.Units[Game.SelectedUnitID].BtnPerim.height),
+      YELLOW
+    );
+  end;
+end;
+procedure PositionAttackerUnitsAroundHex(hexID: Integer);
+var
+  i, j, k, unitIndex: Integer;
+  queue: array of Integer; // File pour la recherche en largeur
+  queueStart, queueEnd: Integer; // Indices pour la file
+  visited: array of Boolean; // Pour marquer les hexagones visités
+  validHexes: array of Integer; // Liste des hexagones valides pour placer les unités
+  occupiedHexes: array of Integer; // Liste des hexagones occupés
+  unitPlaced: Boolean;
+  neighborID: Integer;
+begin
+  // Vérifier si l'ID de l'hexagone est valide
+  if (hexID < 1) or (hexID > HexagonCount) then
+  begin
+    WriteLn('Erreur : ID d''hexagone invalide dans PositionAttackerUnitsAroundHex');
+    Exit;
+  end;
+
+  // Initialiser la file pour la recherche en largeur
+  SetLength(queue, HexagonCount);
+  queueStart := 0;
+  queueEnd := 0;
+  queue[queueEnd] := hexID;
+  Inc(queueEnd);
+
+  // Initialiser le tableau des hexagones visités
+  SetLength(visited, HexagonCount + 1);
+  for i := 0 to HexagonCount do
+    visited[i] := False;
+  visited[hexID] := True;
+
+  // Initialiser la liste des hexagones valides
+  SetLength(validHexes, 0);
+
+  // Recherche en largeur pour trouver tous les hexagones valides
+  while queueStart < queueEnd do
+  begin
+    // Récupérer l'hexagone courant
+    i := queue[queueStart];
+    Inc(queueStart);
+
+    // Vérifier si cet hexagone est valide (pas de forêt, mer, ou château)
+    if (Hexagons[i].TerrainType <> 'foret') and
+       (Hexagons[i].TerrainType <> 'mer') and
+       (not Hexagons[i].IsCastle) then
+    begin
+      SetLength(validHexes, Length(validHexes) + 1);
+      validHexes[High(validHexes)] := i;
+    end;
+
+    // Ajouter les voisins non visités à la file
+    for j := 1 to 6 do
+    begin
+      case j of
+        1: neighborID := Hexagons[i].Neighbor1;
+        2: neighborID := Hexagons[i].Neighbor2;
+        3: neighborID := Hexagons[i].Neighbor3;
+        4: neighborID := Hexagons[i].Neighbor4;
+        5: neighborID := Hexagons[i].Neighbor5;
+        6: neighborID := Hexagons[i].Neighbor6;
+      end;
+
+      // Vérifier si le voisin est valide et non visité
+      if (neighborID > 0) and (neighborID <= HexagonCount) and not visited[neighborID] then
+      begin
+        visited[neighborID] := True;
+        queue[queueEnd] := neighborID;
+        Inc(queueEnd);
+      end;
+    end;
+  end;
+
+  // Créer une liste des hexagones déjà occupés
+  SetLength(occupiedHexes, 0);
+  for j := 1 to MAX_UNITS do
+  begin
+    if Game.Units[j].HexagoneActuel > 0 then
+    begin
+      SetLength(occupiedHexes, Length(occupiedHexes) + 1);
+      occupiedHexes[High(occupiedHexes)] := Game.Units[j].HexagoneActuel;
+    end;
+  end;
+
+  // Positionner les unités attaquantes (sauf les bateaux)
+  unitIndex := 0;
+  for i := 1 to MAX_UNITS do
+  begin
+    if (Game.Units[i].numplayer = 1) and (Game.Units[i].HexagoneActuel = -1) then // Unité attaquante non positionnée
+    begin
+      // Exclure les bateaux (type "bateau")
+      if Game.Units[i].TypeUnite.lenom = 'bateau' then
+        Continue; // Passer à l'unité suivante
+
+      // Vérifier si c'est un Lieutenant ou un Duc
+      Game.IsSpecialUnit := (Game.Units[i].TypeUnite.lenom = 'lieutenant') or (Game.Units[i].TypeUnite.lenom = 'duc');
+
+      unitPlaced := False;
+      while (unitIndex < Length(validHexes)) and not unitPlaced do
+      begin
+        // Vérifier si l'hexagone est occupé
+        Game.IsOccupied := False;
+        Game.HexOccupiedByAttacker := False;
+        for k := 1 to MAX_UNITS do
+        begin
+          if Game.Units[k].HexagoneActuel = validHexes[unitIndex] then
+          begin
+            Game.IsOccupied := True;
+            if Game.Units[k].numplayer = 1 then // Occupé par une unité attaquante
+              Game.HexOccupiedByAttacker := True;
+            Break;
+          end;
+        end;
+
+        // Autoriser l'empilement uniquement pour le Lieutenant ou le Duc si l'hexagone est occupé par une unité attaquante
+        if (not Game.IsOccupied) or (Game.IsSpecialUnit and Game.HexOccupiedByAttacker) then
+        begin
+          // Positionner l'unité sur cet hexagone
+          CenterUnitOnHexagon(i, validHexes[unitIndex]);
+          if not Game.IsSpecialUnit then
+          begin
+            // Ajouter l'hexagone à la liste des occupés seulement si l'unité n'est pas spéciale
+            SetLength(occupiedHexes, Length(occupiedHexes) + 1);
+            occupiedHexes[High(occupiedHexes)] := validHexes[unitIndex];
+          end;
+          unitPlaced := True;
+        end;
+        unitIndex := unitIndex + 1;
+      end;
+
+      if not unitPlaced then
+      begin
+        WriteLn('Erreur : Pas assez d''hexagones valides pour positionner toutes les unités attaquantes');
+        Exit;
+      end;
+    end;
+  end;
+
+  WriteLn('Unités attaquantes positionnées autour de l''hexagone ', hexID);
+end;
 procedure DetectRiverPairsAndSave;
 var
   i, j, pairCount: Integer;
@@ -289,6 +479,7 @@ begin
      (mouseScreenPos.y < topBorderHeight) or
      (mouseScreenPos.y > screenHeight - bottomBorderHeight) then
   begin
+    WriteLn('Clic hors de la zone visible - mouseScreenPos: x=', mouseScreenPos.x, ', y=', mouseScreenPos.y);
     Exit; // Retourne 0 si le clic est dans les bordures noires
   end;
 
@@ -325,7 +516,9 @@ begin
   end;
 
   if closestHex >= 0 then
-    Result := closestHex;
+    Result := closestHex
+  else
+    WriteLn('Aucun hexagone trouvé - x=', x, ', y=', y);
 end;
 
 procedure MoveCarte2DFleche;
@@ -368,26 +561,50 @@ var
   deltaX, deltaY: Single;
   currentMousePos: TVector2;
 begin
+  // Initialiser mousePos la première fois
+  if not Game.MouseInitialized then
+  begin
+    mousePos := GetMousePosition();
+    Game.MouseInitialized := True;
+  end;
+
   if IsMouseButtonDown(MOUSE_BUTTON_LEFT) then
   begin
+    // Si le bouton gauche vient d'être enfoncé, initialiser mousePos et marquer le début du glisser-déposer
+    if not Game.IsDragging then
+    begin
+      mousePos := GetMousePosition();
+      Game.IsDragging := True;
+    end;
+
     currentMousePos := GetMousePosition();
-    deltaX := mousePos.x - currentMousePos.x;
-    deltaY := mousePos.y - currentMousePos.y;
 
-    camera.target.x := camera.target.x + deltaX;
-    camera.target.y := camera.target.y + deltaY;
+    // Vérifier si la souris a bougé (pour différencier un clic simple d’un glisser-déposer)
+    if (GetMouseDelta.x <> 0.0) or (GetMouseDelta.y <> 0.0) then
+    begin
+      deltaX := mousePos.x - currentMousePos.x;
+      deltaY := mousePos.y - currentMousePos.y;
 
-    // Utiliser les limites dynamiques
-    if camera.target.x < leftLimit then
-      camera.target.x := leftLimit;
-    if camera.target.x > rightLimit then
-      camera.target.x := rightLimit;
-    if camera.target.y < topLimit then
-      camera.target.y := topLimit;
-    if camera.target.y > bottomLimit then
-      camera.target.y := bottomLimit;
+      camera.target.x := camera.target.x + deltaX;
+      camera.target.y := camera.target.y + deltaY;
 
-    mousePos := currentMousePos;
+      // Utiliser les limites dynamiques
+      if camera.target.x < leftLimit then
+        camera.target.x := leftLimit;
+      if camera.target.x > rightLimit then
+        camera.target.x := rightLimit;
+      if camera.target.y < topLimit then
+        camera.target.y := topLimit;
+      if camera.target.y > bottomLimit then
+        camera.target.y := bottomLimit;
+
+      mousePos := currentMousePos;
+    end;
+  end
+  else
+  begin
+    // Si le bouton gauche est relâché, terminer le glisser-déposer
+    Game.IsDragging := False;
   end;
 end;
 
