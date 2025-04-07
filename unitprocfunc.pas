@@ -465,7 +465,6 @@ var
   i: Integer;
   minDistance, distance: Single;
   closestHex: Integer;
-  startIdx, endIdx: Integer;
   mouseScreenPos: TVector2;
 begin
   Result := 0; // Retourne 0 par défaut (clic hors de la carte ou aucun hexagone trouvé)
@@ -483,29 +482,12 @@ begin
     Exit; // Retourne 0 si le clic est dans les bordures noires
   end;
 
-  // Si le clic est dans la zone visible, chercher l'hexagone
+  // Si le clic est dans la zone visible, chercher l'hexagone le plus proche
   minDistance := 10000; // Distance initiale très grande
   closestHex := -1;
 
-  // Déterminer le groupe en fonction de y (espace du monde)
-  if y <= 565 then
-  begin
-    startIdx := 1; // Hexagones 1 à 288
-    endIdx := 288;
-  end
-  else if y <= 1060 then
-  begin
-    startIdx := 289; // Hexagones 289 à 576
-    endIdx := 576;
-  end
-  else
-  begin
-    startIdx := 577; // Hexagones 577 à 832
-    endIdx := HexagonCount;
-  end;
-
-  // Parcourir les hexagones du groupe
-  for i := startIdx to endIdx do
+  // Parcourir tous les hexagones
+  for i := 1 to HexagonCount do
   begin
     distance := Sqrt(Sqr(x - Hexagons[i].CenterX) + Sqr(y - Hexagons[i].CenterY));
     if distance < minDistance then

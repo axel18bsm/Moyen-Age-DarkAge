@@ -258,6 +258,7 @@ var
   yPos: Integer;
   unitCount: Integer;
   message: string;
+  dialogResult: Integer;
 begin
   // Afficher l'ID de l'hexagone cliqué
   if clickedHexID > 0 then
@@ -281,9 +282,21 @@ begin
 
   // Informations sur le joueur
   if Game.CurrentPlayer.IsAttacker then
-    playerText := 'Attaquant'
+  begin
+    playerText := 'Attaquant';
+    if Game.Attacker.PlayerType = ptAI then
+      playerText := playerText + ' - AI'
+    else
+      playerText := playerText + ' - Humain';
+  end
   else
+  begin
     playerText := 'Défenseur';
+    if Game.Defender.PlayerType = ptAI then
+      playerText := playerText + ' - AI'
+    else
+      playerText := playerText + ' - Humain';
+  end;
   GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 60, 230, 20), PChar('Joueur : ' + playerText));
 
   // Informations sur l'état (GameState)
@@ -297,9 +310,6 @@ begin
     else stateDisplayText := stateText; // Par défaut, utiliser le nom brut
   end;
   GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 80, 230, 20), PChar('État : ' + stateDisplayText));
-
-  // Log pour vérifier clickedHexID avant l'affichage
-  WriteLn('AffichageEcranGui - clickedHexID : ', clickedHexID);
 
   // Afficher les informations de l'hexagone et des unités
   yPos := 110; // Position Y de départ pour les informations de l'hexagone
@@ -322,14 +332,27 @@ begin
                           gsAttackerBattleOrders, gsAttackerBattleExecute, gsDefenderMoveOrders,
                           gsDefenderMoveExecute, gsDefenderBattleOrders, gsDefenderBattleExecute, gsCheckVictory]) then
   begin
-    if (Game.Attacker.PlayerType = ptHuman) and (Game.Attacker.SetupType = stManual) and Game.AttackerUnitsPlaced then
+    if (Game.Attacker.SetupType = stManual) and (Game.AttackerUnitsPlaced) then
     begin
-      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 30), 'Suivant') <> 0 then
+      if not Game.ShowConfirmDialog then
       begin
-        // Afficher un message de confirmation avec RayGUI
-        if GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin du placement ?', 'Oui;Non') = 1 then
+        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 30), 'Suivant') <> 0 then
         begin
+          Game.ShowConfirmDialog := True; // Afficher la boîte de dialogue
+        end;
+      end
+      else
+      begin
+        // Afficher la boîte de dialogue de confirmation
+        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin du placement ?', 'Oui;Non');
+        if dialogResult = 1 then // Oui
+        begin
+          Game.ShowConfirmDialog := False;
           Game.CurrentState := gsSetupDefender;
+        end
+        else if dialogResult = 2 then // Non
+        begin
+          Game.ShowConfirmDialog := False; // Fermer la boîte de dialogue
         end;
       end;
       yPos := yPos + 40;
@@ -358,12 +381,18 @@ begin
   begin
     if not Game.AttackerUnitsPlaced then
     begin
-      message := 'Cliquez avec le bouton droit sur la carte pour positionner les unités attaquantes';
+      if (Game.Attacker.PlayerType = ptAI) and (Game.Attacker.SetupType = stManual) then
+        message := 'IA-manuel : Cliquez avec le bouton droit pour positionner les unités attaquantes'
+      else
+        message := 'Cliquez avec le bouton droit sur la carte pour positionner les unités attaquantes';
     end
     else
     begin
-      message := 'Unités attaquantes positionnées';
-      if (Game.Attacker.PlayerType = ptHuman) and (Game.Attacker.SetupType = stManual) then
+      if (Game.Attacker.PlayerType = ptAI) and (Game.Attacker.SetupType = stManual) then
+        message := 'IA-manuel : Unités attaquantes positionnées'
+      else
+        message := 'Unités attaquantes positionnées';
+      if Game.Attacker.SetupType = stManual then
         message := message + '. Vous pouvez les déplacer';
     end;
     GuiLabel(RectangleCreate(10, screenHeight - bottomBorderHeight + 30, 230, 20), PChar(message));
@@ -574,72 +603,75 @@ end;
   end;
 end;
  procedure InitializeGameManager;
- begin
-   // Initialiser l'état du jeu
-   Game.CurrentState := gsInitialization;
-   Game.PreviousState := gsInitialization; // État précédent initial
-   Game.GamePlayState := gsSetupAttacker; // État de jeu actif initial (sera mis à jour plus tard)
+begin
+  // Initialiser l'état du jeu
+  Game.CurrentState := gsInitialization;
+  Game.PreviousState := gsInitialization; // État précédent initial
+  Game.GamePlayState := gsSetupAttacker; // État de jeu actif initial (sera mis à jour plus tard)
 
-   // Initialiser le timer du splash screen
-   Game.SplashScreenTimer := 0.0;
+  // Initialiser le timer du splash screen
+  Game.SplashScreenTimer := 0.0;
 
-   // Initialiser les joueurs
-   Game.Attacker.PlayerType := ptHuman; // Par défaut
-   Game.Attacker.SetupType := stManual; // Par défaut : mode manuel
-   Game.Attacker.IsAttacker := True;
-   Game.Defender.PlayerType := ptHuman; // Par défaut
-   Game.Defender.SetupType := stRandom; // Par défaut
-   Game.Defender.IsAttacker := False;
+  // Initialiser les joueurs
+  Game.Attacker.PlayerType := ptHuman; // Par défaut
+  Game.Attacker.SetupType := stManual; // Par défaut : mode manuel
+  Game.Attacker.IsAttacker := True;
+  Game.Defender.PlayerType := ptHuman; // Par défaut
+  Game.Defender.SetupType := stRandom; // Par défaut
+  Game.Defender.IsAttacker := False;
 
-   // Initialiser les variables des sliders
-   Game.AttackerType := 0;  // 0 = Humain
-   Game.AttackerSetup := 1; // 1 = Manuel
-   Game.DefenderType := 0;  // 0 = Humain
-   Game.DefenderSetup := 0; // 0 = Random
+  // Initialiser les variables des sliders
+  Game.AttackerType := 0;  // 0 = Humain
+  Game.AttackerSetup := 1; // 1 = Manuel
+  Game.DefenderType := 0;  // 0 = Humain
+  Game.DefenderSetup := 0; // 0 = Random
 
-   // Initialiser le tour
-   Game.CurrentTurn := 0;
+  // Initialiser le tour
+  Game.CurrentTurn := 0;
 
-   // Initialiser le drapeau de positionnement
-   Game.AttackerUnitsPlaced := False;
+  // Initialiser le drapeau de positionnement
+  Game.AttackerUnitsPlaced := False;
 
-   // Initialiser l'unité sélectionnée
-   Game.SelectedUnitID := -1; // Aucune unité sélectionnée par défaut
+  // Initialiser l'unité sélectionnée
+  Game.SelectedUnitID := -1; // Aucune unité sélectionnée par défaut
 
-   // Initialiser le message d'erreur
-   Game.ErrorMessage := '';
+  // Initialiser le message d'erreur
+  Game.ErrorMessage := '';
 
-   // Initialiser les variables globales pour le positionnement
-   Game.IsOccupied := False;
-   Game.HexOccupiedByAttacker := False;
-   Game.IsSpecialUnit := False;
+  // Initialiser les variables globales pour le positionnement
+  Game.IsOccupied := False;
+  Game.HexOccupiedByAttacker := False;
+  Game.IsSpecialUnit := False;
 
-   // Initialiser MouseInitialized
-   Game.MouseInitialized := False;
+  // Initialiser MouseInitialized
+  Game.MouseInitialized := False;
 
-   // Initialiser IsDragging
-   Game.IsDragging := False;
+  // Initialiser IsDragging
+  Game.IsDragging := False;
 
-   // Charger l'image du splash screen
-   Game.SplashScreenImage := LoadTexture('resources/image/intromoyenage.png');
-   if Game.SplashScreenImage.id = 0 then
-   begin
-     WriteLn('Erreur : Impossible de charger l''image resources/image/intromoyenage.png');
-   end;
+  // Initialiser ShowConfirmDialog
+  Game.ShowConfirmDialog := False;
 
-   // Initialiser l'audio et charger la musique
-   InitAudioDevice();
-   Game.Music := LoadMusicStream('resources/music/HeroicAge.mp3');
-   if Game.Music.ctxData = nil then
-   begin
-     WriteLn('Erreur : Impossible de charger la musique resources/music/HeroicAge.mp3');
-   end;
-   Game.MusicPlaying := True; // La musique commence à jouer par défaut
-   PlayMusicStream(Game.Music);
+  // Charger l'image du splash screen
+  Game.SplashScreenImage := LoadTexture('resources/image/intromoyenage.png');
+  if Game.SplashScreenImage.id = 0 then
+  begin
+    WriteLn('Erreur : Impossible de charger l''image resources/image/intromoyenage.png');
+  end;
 
-   // Charger le style Raygui "Amber"
-   GuiLoadStyle(PChar(GetApplicationDirectory + 'gui_styles/style_amber.rgs'));
- end;
+  // Initialiser l'audio et charger la musique
+  InitAudioDevice();
+  Game.Music := LoadMusicStream('resources/music/HeroicAge.mp3');
+  if Game.Music.ctxData = nil then
+  begin
+    WriteLn('Erreur : Impossible de charger la musique resources/music/HeroicAge.mp3');
+  end;
+  Game.MusicPlaying := True; // La musique commence à jouer par défaut
+  PlayMusicStream(Game.Music);
+
+  // Charger le style Raygui "Amber"
+  GuiLoadStyle(PChar(GetApplicationDirectory + 'gui_styles/style_amber.rgs'));
+end;
 
  procedure UpdateGameManager;
  var
@@ -752,11 +784,6 @@ end;
          // Réinitialiser le drapeau de positionnement
          Game.AttackerUnitsPlaced := False;
 
-         // Log pour vérifier les valeurs
-         WriteLn('Après Commencer la partie :');
-         WriteLn('  Game.Attacker.PlayerType : ', GetEnumName(TypeInfo(TPlayerType), Ord(Game.Attacker.PlayerType)));
-         WriteLn('  Game.Attacker.SetupType : ', GetEnumName(TypeInfo(TSetupType), Ord(Game.Attacker.SetupType)));
-
          // Passer au placement des troupes de l'attaquant
          Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
          Game.CurrentState := gsSetupAttacker;
@@ -765,6 +792,13 @@ end;
 
      gsSetupAttacker:
      begin
+       // Mettre à jour clickedHexID à chaque clic gauche, même avant le positionnement
+       if IsMouseButtonPressed(MOUSE_BUTTON_LEFT) and not Game.IsDragging then
+       begin
+         worldPosition := GetScreenToWorld2D(GetMousePosition(), camera);
+         clickedHexID := GetHexagonAtPosition(worldPosition.x, worldPosition.y);
+       end;
+
        // Positionnement des unités attaquantes avec clic droit
        if not Game.AttackerUnitsPlaced then
        begin
@@ -776,16 +810,16 @@ end;
            begin
              PositionAttackerUnitsAroundHex(clickedHexID);
              Game.AttackerUnitsPlaced := True;
-             // Si humain et positionnement manuel, attendre l’action de l’utilisateur
+             // Si mode manuel (humain ou IA), attendre l’action de l’utilisateur
              // Sinon, passer à l’état suivant
-             if not ((Game.Attacker.PlayerType = ptHuman) and (Game.Attacker.SetupType = stManual)) then
+             if not (Game.Attacker.SetupType = stManual) then
              begin
                Game.CurrentState := gsSetupDefender;
              end;
            end;
          end;
        end
-       else if (Game.Attacker.PlayerType = ptHuman) and (Game.Attacker.SetupType = stManual) then
+       else if Game.Attacker.SetupType = stManual then // Mode manuel (humain ou IA)
        begin
          // Mode manuel : permettre le déplacement des unités
          if IsMouseButtonPressed(MOUSE_BUTTON_LEFT) and not Game.IsDragging then
@@ -794,13 +828,8 @@ end;
 
            // Essayer de sélectionner une unité
            Game.SelectedUnitID := SelectUnit(GetMousePosition().x, GetMousePosition().y, 1); // 1 = attaquant
-           if Game.SelectedUnitID = -1 then
-           begin
-             // Si aucune unité n'est sélectionnée, mettre à jour clickedHexID
-             clickedHexID := GetHexagonAtPosition(worldPosition.x, worldPosition.y);
-             // Log pour diagnostiquer
-             WriteLn('Clic gauche - clickedHexID : ', clickedHexID);
-           end;
+           // Toujours mettre à jour clickedHexID, même si une unité est sélectionnée
+           clickedHexID := GetHexagonAtPosition(worldPosition.x, worldPosition.y);
          end;
 
          // Déplacer l'unité sélectionnée avec clic droit

@@ -156,6 +156,7 @@ type
   IsSpecialUnit: Boolean; // Indique si l'unité est un Lieutenant ou un Duc
   MouseInitialized: Boolean; // Indique si mousePos a été initialisé pour DragAndDropCarte2D;
   IsDragging: Boolean; // Indique si un glisser-déposer est en cours;
+  ShowConfirmDialog: Boolean; // Indique si la boîte de dialogue de confirmation doit être affichée
   end;
 
   // Type pour représenter un hexagone
