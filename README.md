@@ -1,6 +1,9 @@
 # MoyenAge - Dark Age
 Wargame fashioned old school in the darkAges. You can execute, but movement and figthing are 
-not implemented.  Setup of units can be deplyed at random or manually.
+not implemented.  Setup of units can be deployed at random or manually. 2 players Human versus
+IA.
+
+Next step : refactoring some code. Next order movement.
 
 
 Some pictures of the game
