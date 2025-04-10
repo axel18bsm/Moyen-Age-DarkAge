@@ -131,33 +131,36 @@ type
 
 
   TGameManager = record
-    CurrentState: TGameState;  // État actuel du jeu
-    PreviousState: TGameState; // État précédent (pour le bouton "Retour")
-    GamePlayState: TGameState; // État de jeu actif (par exemple, gsSetupAttacker)
-    SplashScreenImage: TTexture2D;  // Image du splash screen
-    SplashScreenTimer: Single;  // Temps écoulé pour le splash screen
-    Music: TMusic;              // Musique du splash screen
-    MusicPlaying: Boolean;      // État de la musique (joue ou arrêtée)
-    Aquitter: Boolean;          // Sortie du jeu
-    Attacker: TPlayer;          // Joueur attaquant
-    Defender: TPlayer;          // Joueur défenseur
-    CurrentTurn: Integer;       // Tour actuel (1 à 15)
-    CurrentPlayer: TPlayer;     // Joueur actif (pointe vers Attacker ou Defender)
-    AttackerType: LongInt;      // 0 = Humain, 1 = IA
-    AttackerSetup: LongInt;     // 0 = Random, 1 = Manuel
-    DefenderType: LongInt;      // 0 = Humain, 1 = IA
-    DefenderSetup: LongInt;     // 0 = Random, 1 = Manuel
-    AttackerUnitsPlaced: Boolean; // Indique si les unités attaquantes ont été positionnées
+  CurrentState: TGameState;  // État actuel du jeu
+  PreviousState: TGameState; // État précédent (pour le bouton "Retour")
+  GamePlayState: TGameState; // État de jeu actif (par exemple, gsSetupAttacker)
+  SplashScreenImage: TTexture2D;  // Image du splash screen
+  SplashScreenTimer: Single;  // Temps écoulé pour le splash screen
+  Music: TMusic;              // Musique du splash screen
+  MusicPlaying: Boolean;      // État de la musique (joue ou arrêtée)
+  Aquitter: Boolean;          // Sortie du jeu
+  Attacker: TPlayer;          // Joueur attaquant
+  Defender: TPlayer;          // Joueur défenseur
+  CurrentTurn: Integer;       // Tour actuel (1 à 15)
+  CurrentPlayer: TPlayer;     // Joueur actif (pointe vers Attacker ou Defender)
+  AttackerType: LongInt;      // 0 = Humain, 1 = IA
+  AttackerSetup: LongInt;     // 0 = Random, 1 = Manuel
+  DefenderType: LongInt;      // 0 = Humain, 1 = IA
+  DefenderSetup: LongInt;     // 0 = Random, 1 = Manuel
+  AttackerUnitsPlaced: Boolean; // Indique si les unités attaquantes ont été positionnées
+  DefenderUnitsPlaced: Boolean; // Indique si les unités défenseurs ont été positionnées
   SelectedUnitID: Integer; // ID de l'unité sélectionnée (-1 si aucune unité sélectionnée)
-    ErrorMessage: string; // Message d'erreur temporaire pour le GUI bas
-    Units: array[1..MAX_UNITS] of TUnit; // Toutes les unités des deux armées
-    IsOccupied: Boolean; // Indique si un hexagone est occupé
+  ErrorMessage: string; // Message d'erreur temporaire pour le GUI bas
+  Units: array[1..MAX_UNITS] of TUnit; // Toutes les unités des deux armées
+  IsOccupied: Boolean; // Indique si un hexagone est occupé
   HexOccupiedByAttacker: Boolean; // Indique si un hexagone est occupé par une unité attaquante
   IsSpecialUnit: Boolean; // Indique si l'unité est un Lieutenant ou un Duc
-  MouseInitialized: Boolean; // Indique si mousePos a été initialisé pour DragAndDropCarte2D;
-  IsDragging: Boolean; // Indique si un glisser-déposer est en cours;
+  MouseInitialized: Boolean; // Indique si mousePos a été initialisé pour DragAndDropCarte2D
+  IsDragging: Boolean; // Indique si un glisser-déposer est en cours
   ShowConfirmDialog: Boolean; // Indique si la boîte de dialogue de confirmation doit être affichée
-  end;
+  Messages: array of string; // Liste des messages pour l'historique
+  MessageCount: Integer; // Nombre de messages dans l'historique
+end;
 
   // Type pour représenter un hexagone
   THexagon = record
@@ -395,7 +398,6 @@ begin
 
   // Charger une image par défaut robuste
 
-
   // Initialiser toutes les unités dans l'ordre (attaquant puis défenseur)
   for i := 1 to 17 do // 17 entrées dans ArmeeEntries
   begin
@@ -476,14 +478,8 @@ begin
     end;
   end;
 
-  // Positionner les unités spécifiques
-  CenterUnitOnHexagon(59, 308); // Comte (défenseur)
-  CenterUnitOnHexagon(58, 309); // Chef Milicien (défenseur)
-  CenterUnitOnHexagon(50, 307); // Cavalier défenseur
-  CenterUnitOnHexagon(45, 308); // Archer défenseur (corrigé : ID = 45, dernier archer défenseur)
-
-  // Libérer l'image par défaut
-
+  // Les positions initiales des unités défenseurs ont été supprimées
+  // Elles seront gérées dans gsSetupDefender
 end;
 
 
