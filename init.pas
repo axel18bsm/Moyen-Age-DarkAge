@@ -160,6 +160,8 @@ type
   ShowConfirmDialog: Boolean; // Indique si la boîte de dialogue de confirmation doit être affichée
   Messages: array of string; // Liste des messages pour l'historique
   MessageCount: Integer; // Nombre de messages dans l'historique
+  LastStateMessage: string; // Dernier message d'état ajouté (pour éviter les répétitions)
+  LastYPos: Integer; // Dernière position Y après l'affichage des informations de l'hexagone et des unités
 end;
 
   // Type pour représenter un hexagone

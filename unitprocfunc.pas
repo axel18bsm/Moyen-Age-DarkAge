@@ -26,6 +26,7 @@ procedure DrawUnitSelectionFrame;
 
 
 implementation
+uses GameManager;
 
 function SelectUnit(mouseX, mouseY: Single; playerNum: Integer): Integer;
 var
@@ -542,7 +543,18 @@ procedure DragAndDropCarte2D;
 var
   deltaX, deltaY: Single;
   currentMousePos: TVector2;
+  inVisibleArea: Boolean;
 begin
+  // Vérifier si la souris est dans la zone visible
+  currentMousePos := GetMousePosition();
+  inVisibleArea := (currentMousePos.x >= leftBorderWidth) and
+                   (currentMousePos.x <= screenWidth - rightBorderWidth) and
+                   (currentMousePos.y >= topBorderHeight) and
+                   (currentMousePos.y <= screenHeight - bottomBorderHeight);
+
+  // Ajouter des messages de log pour déboguer
+
+
   // Initialiser mousePos la première fois
   if not Game.MouseInitialized then
   begin
@@ -559,33 +571,41 @@ begin
       Game.IsDragging := True;
     end;
 
-    currentMousePos := GetMousePosition();
-
-    // Vérifier si la souris a bougé (pour différencier un clic simple d’un glisser-déposer)
-    if (GetMouseDelta.x <> 0.0) or (GetMouseDelta.y <> 0.0) then
+    // Vérifier si la souris est dans la zone visible pour permettre le déplacement
+    if inVisibleArea then
     begin
-      deltaX := mousePos.x - currentMousePos.x;
-      deltaY := mousePos.y - currentMousePos.y;
+      currentMousePos := GetMousePosition();
 
-      camera.target.x := camera.target.x + deltaX;
-      camera.target.y := camera.target.y + deltaY;
+      // Vérifier si la souris a bougé (pour différencier un clic simple d’un glisser-déposer)
+      if (GetMouseDelta.x <> 0.0) or (GetMouseDelta.y <> 0.0) then
+      begin
+        deltaX := mousePos.x - currentMousePos.x;
+        deltaY := mousePos.y - currentMousePos.y;
 
-      // Utiliser les limites dynamiques
-      if camera.target.x < leftLimit then
-        camera.target.x := leftLimit;
-      if camera.target.x > rightLimit then
-        camera.target.x := rightLimit;
-      if camera.target.y < topLimit then
-        camera.target.y := topLimit;
-      if camera.target.y > bottomLimit then
-        camera.target.y := bottomLimit;
+        camera.target.x := camera.target.x + deltaX;
+        camera.target.y := camera.target.y + deltaY;
 
-      mousePos := currentMousePos;
+        // Utiliser les limites dynamiques
+        if camera.target.x < leftLimit then
+          camera.target.x := leftLimit;
+        if camera.target.x > rightLimit then
+          camera.target.x := rightLimit;
+        if camera.target.y < topLimit then
+          camera.target.y := topLimit;
+        if camera.target.y > bottomLimit then
+          camera.target.y := bottomLimit;
+
+        mousePos := currentMousePos;
+     end;
+    end
+    else
+    begin
     end;
   end
   else
   begin
     // Si le bouton gauche est relâché, terminer le glisser-déposer
+    if Game.IsDragging then
     Game.IsDragging := False;
   end;
 end;
@@ -600,7 +620,18 @@ var
   zoomFactor: Single = 0.1; // Sensibilité du zoom
   minZoom: Single = 0.8;   // Zoom minimal (50% de la taille originale)
   maxZoom: Single = 2.0;   // Zoom maximal (200% de la taille originale)
+  mousePos: TVector2;
 begin
+  // Vérifier si la souris est dans la zone visible
+  mousePos := GetMousePosition();
+  if not ((mousePos.x >= leftBorderWidth) and
+          (mousePos.x <= screenWidth - rightBorderWidth) and
+          (mousePos.y >= topBorderHeight) and
+          (mousePos.y <= screenHeight - bottomBorderHeight)) then
+  begin
+    Exit; // Sortir si la souris est en dehors de la zone visible
+  end;
+
   // Récupérer le mouvement de la molette
   wheelMove := GetMouseWheelMove();
 
