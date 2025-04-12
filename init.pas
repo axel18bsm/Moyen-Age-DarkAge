@@ -83,6 +83,7 @@ type
     TextureHalfWidth: Integer;  // Moitié de la largeur de la texture (pour centrage)
     TextureHalfHeight: Integer; // Moitié de la hauteur de la texture (pour centrage)
     points: array of TVector2; // Tableau dynamique de points
+    HasMoveOrder: Boolean;
   end;
   TPlayer = record
     PlayerType: TPlayerType; // Humain ou IA
@@ -162,6 +163,9 @@ type
   MessageCount: Integer; // Nombre de messages dans l'historique
   LastStateMessage: string; // Dernier message d'état ajouté (pour éviter les répétitions)
   LastYPos: Integer; // Dernière position Y après l'affichage des informations de l'hexagone et des unités
+  LastClickTime: Double; // Temps du dernier clic pour détecter un double-clic
+  LastClickedHexID: Integer; // Dernier hexagone cliqué (pour l'affichage dans le GUI droit)
+  LastDestinationHexID: Integer; // Hexagone de destination (pour l'affichage dans le GUI droit)
 end;
 
   // Type pour représenter un hexagone
