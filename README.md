@@ -3,7 +3,7 @@ Wargame fashioned old school in the darkAges. You can execute, but movement and 
 not implemented.  Setup of units can be deployed at random or manually. 2 players Human versus
 IA.
 
-Next step : all is refactoring except Messages. Next unit movement.
+Next step : all order movement are done. Next step : unit movement.
 
 
 Some pictures of the game
