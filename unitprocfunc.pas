@@ -21,13 +21,348 @@ procedure DetectRiverPairsAndSave;
 procedure PositionAttackerUnitsAroundHex(hexID: Integer);
 function SelectUnit(mouseX, mouseY: Single; playerNum: Integer): Integer;
 procedure DrawUnitSelectionFrame;
+procedure CalculateTrajectory(unitID: Integer);
+procedure AdjustSpecialHexagons(unitID: Integer);
+procedure ExecuteMoveOrders(numplayer: Integer);
 
 
 
 
 implementation
 uses GameManager;
+// Fonction commune pour exécuter les ordres de mouvement (attaquants ou défenseurs)
+procedure ExecuteMoveOrders(numplayer: Integer);
+var
+  unitID, i, j: Integer;
+  currentHexID, nextHexID, baseHexID: Integer;
+  terrainCost: TTerrainCost;
+  armyText: string;
+  occupiedUnits: Integer;
+  occupyingUnitID: Integer;
+  isSpecialUnit, isFriendly: Boolean;
+  allUnitsFinished: Boolean;
+begin
+  // Déterminer le texte pour les messages selon l'armée
+  if numplayer = 1 then
+    armyText := 'attaquante'
+  else
+    armyText := 'défenseur';
 
+  // Initialisation : mettre tourMouvementTermine à True sauf pour les unités concernées
+  for unitID := 1 to MAX_UNITS do
+  begin
+    if (Game.Units[unitID].numplayer = numplayer) and
+       not (Game.Units[unitID].etatUnite = usDead) and
+       Game.Units[unitID].HasMoveOrder then
+    begin
+      // Initialiser vitesseActuelle uniquement au début du tour
+      if Game.IsNewTurn then
+      begin
+        Game.Units[unitID].vitesseActuelle := Game.Units[unitID].vitesseInitiale;
+      end;
+      Game.Units[unitID].hasStopped := False;
+      // Débogage : Afficher PositionFinale dans la console
+      Writeln('Unité ', armyText, ' ', IntToStr(unitID), ' - PositionFinale avant : (',
+              IntToStr(Round(Game.Units[unitID].PositionFinale.x)), ', ',
+              IntToStr(Round(Game.Units[unitID].PositionFinale.y)), ')');
+    end
+    else
+    begin
+      // Unités non concernées (mortes, d'une autre armée, ou sans ordre de mouvement)
+      Game.Units[unitID].tourMouvementTermine := True;
+    end;
+  end;
+
+  // Après avoir traité l'initialisation, indiquer que le tour a été géré
+  Game.IsNewTurn := False;
+
+  // Parcourir toutes les unités et avancer d'un vecteur par frame
+  for unitID := 1 to MAX_UNITS do
+  begin
+    // Traiter uniquement les unités qui n'ont pas terminé leur mouvement
+    if not Game.Units[unitID].tourMouvementTermine then
+    begin
+      // Parcourir la trajectoire point par point, mais avancer d'un seul vecteur par frame
+      i := Game.Units[unitID].trajetIndex;
+      if (i < Length(Game.Units[unitID].trajet)) and (Game.Units[unitID].vitesseActuelle > 0) then
+      begin
+        currentHexID := Game.Units[unitID].trajet[i].hexagone;
+
+        // Vérifier le prochain point
+        nextHexID := Game.Units[unitID].trajet[i + 1].hexagone;
+
+        // Si on ne change pas d'hexagone, avancer simplement
+        if nextHexID = currentHexID then
+        begin
+          i := i + 1;
+          Game.Units[unitID].trajetIndex := i;
+          Game.Units[unitID].PositionActuelle := Game.Units[unitID].trajet[i].vecteur;
+          // Vérifier si on est arrivé à la destination
+          if (i = High(Game.Units[unitID].trajet)) then
+          begin
+            Game.Units[unitID].HasMoveOrder := False;
+            Game.Units[unitID].isReached := True;
+            Game.Units[unitID].tourMouvementTermine := True;
+            AddMessage('Unité ' + armyText + ' ' + IntToStr(unitID) + ' a atteint sa destination sur l''hexagone ' + IntToStr(currentHexID));
+          end;
+        end
+        else
+        begin
+          // Vérifier d'abord le coût de mouvement
+          baseHexID := nextHexID MOD 1000; // Extraire l'ID de base
+          terrainCost := GetTerrainCost(Hexagons[baseHexID].TerrainType);
+
+          if Game.Units[unitID].vitesseActuelle < terrainCost.MovementCost then
+          begin
+            // Pas assez de points : s'arrêter au dernier point avant le changement
+            Game.Units[unitID].PositionActuelle := Game.Units[unitID].trajet[i].vecteur;
+            Game.Units[unitID].HexagoneActuel := currentHexID;
+            Game.Units[unitID].trajetIndex := i;
+            // Ne pas mettre tourMouvementTermine := True ici, l'unité redémarrera au prochain tour
+            AddMessage('Unité ' + armyText + ' ' + IntToStr(unitID) + ' s''arrête sur l''hexagone ' + IntToStr(currentHexID) + ' (manque de points de mouvement)');
+          end
+          else if nextHexID > 1000 then
+          begin
+            // S'arrêter avant l'obstacle
+            Game.Units[unitID].PositionActuelle := Game.Units[unitID].trajet[i].vecteur;
+            Game.Units[unitID].HexagoneActuel := currentHexID;
+            Game.Units[unitID].HasMoveOrder := False;
+            Game.Units[unitID].isReached := True;
+            Game.Units[unitID].tourMouvementTermine := True;
+            Game.Units[unitID].trajetIndex := i;
+            AddMessage('Unité ' + armyText + ' ' + IntToStr(unitID) + ' s''arrête avant un obstacle (hexagone ' + IntToStr(nextHexID) + ')');
+          end
+          else if not (terrainCost.IsPassable) and not ((Hexagons[baseHexID].TerrainType = 'mer') and (Game.Units[unitID].TypeUnite.lenom = 'bateau')) then
+          begin
+            // Terrain infranchissable : s'arrêter avant
+            Game.Units[unitID].PositionActuelle := Game.Units[unitID].trajet[i].vecteur;
+            Game.Units[unitID].HexagoneActuel := currentHexID;
+            Game.Units[unitID].HasMoveOrder := False;
+            Game.Units[unitID].isReached := True;
+            Game.Units[unitID].tourMouvementTermine := True;
+            Game.Units[unitID].trajetIndex := i;
+            AddMessage('Unité ' + armyText + ' ' + IntToStr(unitID) + ' s''arrête avant un terrain infranchissable (hexagone ' + IntToStr(nextHexID) + ')');
+          end
+          else
+          begin
+            // Vérifier si l'hexagone est occupé par une autre unité
+            occupiedUnits := 0;
+            occupyingUnitID := -1;
+            isSpecialUnit := False;
+            isFriendly := False;
+
+            for j := 1 to MAX_UNITS do
+            begin
+              if (j <> unitID) and (Game.Units[j].HexagoneActuel = nextHexID) and
+                 not (Game.Units[j].etatUnite = usDead) then
+              begin
+                Inc(occupiedUnits);
+                occupyingUnitID := j;
+                // Vérifier si l'unité est spéciale
+                if (Game.Units[j].TypeUnite.lenom = 'lieutenant') or
+                   (Game.Units[j].TypeUnite.lenom = 'duc') or
+                   (Game.Units[j].TypeUnite.lenom = 'comte') or
+                   (Game.Units[j].TypeUnite.lenom = 'Chef Milicien') then
+                begin
+                  isSpecialUnit := True;
+                end;
+                // Vérifier si l'unité est amie
+                if Game.Units[j].numplayer = numplayer then
+                begin
+                  isFriendly := True;
+                end;
+              end;
+            end;
+
+            // Gérer les cas selon l'occupation
+            if occupiedUnits > 0 then
+            begin
+              if (occupiedUnits = 1) and isSpecialUnit then
+              begin
+                if isFriendly then
+                begin
+                  // Cas 1 : Unité spéciale amie, on peut continuer
+                  AddMessage('Unité ' + armyText + ' ' + IntToStr(unitID) + ' traverse une unité spéciale amie sur l''hexagone ' + IntToStr(nextHexID));
+                end
+                else
+                begin
+                  // Cas 2 : Unité spéciale ennemie, entrer dans l'hexagone et initier un combat
+                  Game.Units[unitID].PositionActuelle := Game.Units[unitID].trajet[i + 1].vecteur;
+                  Game.Units[unitID].HexagoneActuel := nextHexID;
+                  Game.Units[unitID].HasMoveOrder := False;
+                  Game.Units[unitID].isReached := True;
+                  Game.Units[unitID].tourMouvementTermine := True;
+                  Game.Units[unitID].trajetIndex := i + 1;
+                  AddMessage('Unité ' + armyText + ' ' + IntToStr(unitID) + ' s''arrête sur l''hexagone ' + IntToStr(nextHexID) + ' pour combattre une unité spéciale ennemie');
+                end;
+              end
+              else
+              begin
+                // Cas par défaut : Hexagone occupé par une unité non spéciale ou plusieurs unités, s'arrêter avant
+                Game.Units[unitID].PositionActuelle := Game.Units[unitID].trajet[i].vecteur;
+                Game.Units[unitID].HexagoneActuel := currentHexID;
+                Game.Units[unitID].HasMoveOrder := False;
+                Game.Units[unitID].isReached := True;
+                Game.Units[unitID].tourMouvementTermine := True;
+                Game.Units[unitID].trajetIndex := i;
+                AddMessage('Unité ' + armyText + ' ' + IntToStr(unitID) + ' s''arrête avant un hexagone occupé (hexagone ' + IntToStr(nextHexID) + ')');
+              end;
+            end
+            else
+            begin
+              // Avancer au point suivant
+              i := i + 1;
+              Game.Units[unitID].trajetIndex := i;
+              Game.Units[unitID].PositionActuelle := Game.Units[unitID].trajet[i].vecteur;
+              Game.Units[unitID].HexagoneActuel := nextHexID;
+              Game.Units[unitID].vitesseActuelle := Game.Units[unitID].vitesseActuelle - terrainCost.MovementCost;
+
+              // Vérifier si on est arrivé à la destination
+              if (i = High(Game.Units[unitID].trajet)) then
+              begin
+                Game.Units[unitID].HasMoveOrder := False;
+                Game.Units[unitID].isReached := True;
+                Game.Units[unitID].tourMouvementTermine := True;
+                AddMessage('Unité ' + armyText + ' ' + IntToStr(unitID) + ' a atteint sa destination sur l''hexagone ' + IntToStr(Game.Units[unitID].HexagoneActuel));
+              end;
+            end;
+          end;
+        end;
+
+        // Débogage : Afficher PositionFinale dans la console
+        Writeln('Unité ', armyText, ' ', IntToStr(unitID), ' - PositionFinale après : (',
+                IntToStr(Round(Game.Units[unitID].PositionFinale.x)), ', ',
+                IntToStr(Round(Game.Units[unitID].PositionFinale.y)), ')');
+      end;
+    end;
+  end;
+
+  // Vérifier si toutes les unités ont terminé leur mouvement
+  allUnitsFinished := True;
+  for unitID := 1 to MAX_UNITS do
+  begin
+    if (Game.Units[unitID].numplayer = numplayer) and
+       not (Game.Units[unitID].etatUnite = usDead) then
+    begin
+      if not Game.Units[unitID].tourMouvementTermine then
+      begin
+        allUnitsFinished := False;
+        Break;
+      end;
+    end;
+  end;
+
+  // Ne pas passer automatiquement à la phase suivante (sera géré par le bouton "Suivant")
+end;
+// Ajuste les IDs des hexagones dans la trajectoire pour refléter les hexagones spéciaux
+procedure AdjustSpecialHexagons(unitID: Integer);
+var
+  i, j, k, neighborID: Integer;
+  prevHexID, currentHexID, baseNeighborID, basePrevHexID: Integer;
+begin
+  if Length(Game.Units[unitID].trajet) <= 1 then Exit; // Pas besoin d'ajuster si la trajectoire est vide ou a un seul point
+
+  // Parcourir la trajectoire pour détecter les changements d'hexagone
+  for i := 1 to High(Game.Units[unitID].trajet) do
+  begin
+    prevHexID := Game.Units[unitID].trajet[i-1].hexagone;
+    currentHexID := Game.Units[unitID].trajet[i].hexagone;
+
+    // Détecter un changement d'hexagone
+    if currentHexID <> prevHexID then
+    begin
+      // Utiliser l'ID de base pour accéder à Hexagons
+      basePrevHexID := prevHexID MOD 1000;
+
+      // Vérifier les voisins de l'hexagone qu'on quitte (basePrevHexID)
+      for j := 1 to 6 do
+      begin
+        case j of
+          1: neighborID := Hexagons[basePrevHexID].Neighbor1;
+          2: neighborID := Hexagons[basePrevHexID].Neighbor2;
+          3: neighborID := Hexagons[basePrevHexID].Neighbor3;
+          4: neighborID := Hexagons[basePrevHexID].Neighbor4;
+          5: neighborID := Hexagons[basePrevHexID].Neighbor5;
+          6: neighborID := Hexagons[basePrevHexID].Neighbor6;
+        end;
+
+        // Si le voisin a un ID > 1000, c'est un hexagone spécial
+        if neighborID > 1000 then
+        begin
+          // Extraire les 3 derniers chiffres avec une opération modulo (MOD 1000)
+          baseNeighborID := neighborID MOD 1000;
+
+          // Si l'ID de base du voisin correspond à l'hexagone qu'on entre
+          if baseNeighborID = currentHexID then
+          begin
+            // Remplacer l'ID de l'hexagone par l'ID spécial pour tous les points consécutifs
+            for k := i to High(Game.Units[unitID].trajet) do
+            begin
+              if Game.Units[unitID].trajet[k].hexagone = currentHexID then
+                Game.Units[unitID].trajet[k].hexagone := neighborID
+              else
+                Break; // Arrêter dès qu'on change d'hexagone
+            end;
+            Break; // On a trouvé un hexagone spécial, pas besoin de vérifier les autres voisins
+          end;
+        end;
+      end;
+    end;
+  end;
+end;
+
+// Nouvelle fonction pour calculer la trajectoire Bresenham
+
+procedure CalculateTrajectory(unitID: Integer);
+var
+  dx, dy, steps, step: Integer;
+  x, y, xInc, yInc: Single;
+begin
+  // Calculer la différence entre la position finale et la position actuelle
+  dx := Abs(Round(Game.Units[unitID].PositionFinale.x) - Round(Game.Units[unitID].PositionActuelle.x));
+  dy := Abs(Round(Game.Units[unitID].PositionFinale.y) - Round(Game.Units[unitID].PositionActuelle.y));
+  if dx > dy then
+    steps := dx
+  else
+    steps := dy;
+
+  if steps > 0 then // Éviter une division par zéro
+  begin
+    xInc := (Game.Units[unitID].PositionFinale.x - Game.Units[unitID].PositionActuelle.x) / steps;
+    yInc := (Game.Units[unitID].PositionFinale.y - Game.Units[unitID].PositionActuelle.y) / steps;
+
+    x := Game.Units[unitID].PositionActuelle.x;
+    y := Game.Units[unitID].PositionActuelle.y;
+
+    // Redimensionner le tableau trajet pour stocker tous les points
+    SetLength(Game.Units[unitID].trajet, steps + 1);
+
+    // Stocker le point de départ
+    Game.Units[unitID].trajet[0].vecteur := Vector2Create(x, y);
+    Game.Units[unitID].trajet[0].hexagone := GetHexagonAtPosition(x, y);
+
+    // Calculer et stocker les points intermédiaires
+    for step := 1 to steps do
+    begin
+      x := x + xInc;
+      y := y + yInc;
+      Game.Units[unitID].trajet[step].vecteur := Vector2Create(x, y);
+      Game.Units[unitID].trajet[step].hexagone := GetHexagonAtPosition(x, y);
+    end;
+
+    // Seconde passe : ajuster les IDs des hexagones spéciaux
+    AdjustSpecialHexagons(unitID);
+
+    // Afficher les points de la trajectoire après ajustement
+    for step := 0 to steps do
+    begin
+      WriteLn(Format('Unité %d - Point %d: %d,%d - %d', [unitID, step, Round(Game.Units[unitID].trajet[step].vecteur.x), Round(Game.Units[unitID].trajet[step].vecteur.y), Game.Units[unitID].trajet[step].hexagone]));
+    end;
+
+    // Marquer la trajectoire comme calculée
+    Game.Units[unitID].hasTrajectoryCalculated := True;
+  end;
+end;
 function SelectUnit(mouseX, mouseY: Single; playerNum: Integer): Integer;
 var
   i: Integer;

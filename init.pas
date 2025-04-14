@@ -13,12 +13,20 @@ const
   MAX_UNITS = 68; // Nombre total d'unités (40 pour l'attaquant + 28 pour le défenseur)
   CHEMIN_SOLDAT1='resources/soldat/player1/';
   CHEMIN_SOLDAT2='resources/soldat/player2/';
+  CHEMIN_death='resources/soldat/';
 
 
 type
   TPlayerType = (ptHuman, ptAI); // Type de joueur : Humain ou IA
   TSetupType = (stRandom, stManual); // Type de placement des troupes : Random ou Manuel
+  // Nouveau type énuméré pour l'état de l'unité
+  TUnitState = (usFull, usDamaged, usDead);  // 1: Entière, 2: Endommagée, 3: Morte
 
+  // Nouvelle structure pour stocker la trajectoire
+  Ttrajet = record
+    vecteur: TVector2;  // Point de la trajectoire
+    hexagone: Integer;  // Hexagone correspondant à ce point
+  end;
   TRiverPair = record
     Id: Integer;      // Identifiant unique de la paire
     Hex1: Integer;    // ID du premier hexagone
@@ -51,6 +59,7 @@ type
     distanceCombatMini:Integer;  // distance minimum combat
     distanceCombatMaxi:Integer;  // distance maximum combat.
   end;
+  type
   TUnit = record
     Id: Integer;             // Numéro unique unité
     lenom: PChar;            // Nom de l’unité
@@ -59,31 +68,35 @@ type
     positionInitiale: TVector2;// Stocker la position initiale
     positionFinale: TVector2; // Destination à atteindre
     vitesseInitiale: Integer; // Vitesse autorisée max
-    vitesseActuelle: Integer; // Vitesse corrigée
-    numplayer:integer; // 1 pour attaquant, 2 pour défenseur
-    //NumArmy: Integer;      // Appartenance armée attaquante ou défenseur
-    Fileimagestr:string;      // facilite la vie !!
+    vitesseActuelle: Single;  // Vitesse corrigée
+    numplayer: Integer;      // 1 pour attaquant, 2 pour défenseur
+    Fileimagestr: string;    // facilite la vie !!
     Fileimage: PChar;        // Chemin de mon dessin normal
     FileimageAbime: PChar;   // Chemin de mon dessin abimé
     latexture: TTexture2D;   // Le dessin est stocké
+    deathImage: TTexture2D;  // Image de décès (nouvelle propriété)
     limage: TImage;          // Nom du fichier normal
     Force: Integer;          // Force de combat
-    DistCombatMax: Integer;     // Distance en hexagone au combat max
-    DistCombatMin: Integer;     // Distance en hexagone au combat mini
-    EtatUnite: Integer;      // Entière ou 1/2 force
+    DistCombatMax: Integer;  // Distance en hexagone au combat max
+    DistCombatMin: Integer;  // Distance en hexagone au combat mini
+    EtatUnite: TUnitState;   // Entière ou 1/2 force (remplacement de Integer)
     TypeUnite: TtpUnite;     // Type d'unité
     visible: Boolean;        // Suis-je caché
     HexagoneActuel: Integer; // Sur quel terrain, je suis
     HexagonePrevious: Integer; // Hexagone précédent
-    HexagoneCible:Integer; // hexagone destination
+    HexagoneCible: Integer;  // hexagone destination
     selectionne: Boolean;    // Suis-je cliqué
-    hasStopped: Boolean;     // Indicateur d'arrêt
+    hasStopped: Boolean;     // Indicateur d'arrêt temporaire dans une phase
     hasMoved: Boolean;       // Indicateur de mouvement (au moins 1 déplacement)
-    MustMove: Boolean;     // Permet de savoir s’il doit démarrer ou pas
+    MustMove: Boolean;       // Permet de savoir s’il doit démarrer ou pas
     TextureHalfWidth: Integer;  // Moitié de la largeur de la texture (pour centrage)
     TextureHalfHeight: Integer; // Moitié de la hauteur de la texture (pour centrage)
-    points: array of TVector2; // Tableau dynamique de points
-    HasMoveOrder: Boolean;
+    trajet: array of Ttrajet; // Remplacement de points pour stocker la trajectoire (points + hexagones)
+    hasTrajectoryCalculated: Boolean; // Indique si la trajectoire a été calculée
+    HasMoveOrder: Boolean;   // Indique si l'unité a un ordre de mouvement
+    trajetIndex: Integer;     // Index courant dans la trajectoire
+    isReached: Boolean;      // Indique si l'unité a atteint sa destination finale
+    tourMouvementTermine:Boolean;
   end;
   TPlayer = record
     PlayerType: TPlayerType; // Humain ou IA
@@ -109,7 +122,8 @@ type
     gsDefenderBattleExecute, // Exécution des batailles du défenseur
     gsCheckVictory,          // Vérification des conditions de victoire
     gsGameOver,              // Fin du jeu
-    gsplayerturn             // Attente
+    gsplayerturn,             // Attente
+    gsNewTurn
 
   );
 
@@ -166,6 +180,7 @@ type
   LastClickTime: Double; // Temps du dernier clic pour détecter un double-clic
   LastClickedHexID: Integer; // Dernier hexagone cliqué (pour l'affichage dans le GUI droit)
   LastDestinationHexID: Integer; // Hexagone de destination (pour l'affichage dans le GUI droit)
+  CurrentPlayerTurn:integer;
 end;
 
   // Type pour représenter un hexagone
@@ -398,11 +413,17 @@ end;
 var
   i, k, unitCount: Integer;
   filePathAbime: string;
-  defaultImage: TImage;
+  //defaultImage: TImage;
 begin
   unitCount := 0;
 
-  // Charger une image par défaut robuste
+ // // Charger une image par défaut robuste
+ //// defaultImage := LoadImage('resources/default.png'); // Image par défaut
+ // if defaultImage.data = nil then
+ // begin
+ //   WriteLn('Erreur : Impossible de charger l''image par défaut');
+ //   Halt(1); // Arrêter le programme en cas d'échec
+ // end;
 
   // Initialiser toutes les unités dans l'ordre (attaquant puis défenseur)
   for i := 1 to 17 do // 17 entrées dans ArmeeEntries
@@ -418,9 +439,9 @@ begin
       Game.Units[unitCount].Force := UnitTypes[i].forceInitiale;
       Game.Units[unitCount].DistCombatMax := UnitTypes[i].distanceCombatMaxi;
       Game.Units[unitCount].DistCombatMin := UnitTypes[i].distanceCombatMini;
-      Game.Units[unitCount].EtatUnite := 1; // Entière
+      Game.Units[unitCount].EtatUnite := usFull; // Entière (remplacement de 1)
       Game.Units[unitCount].vitesseInitiale := UnitTypes[i].vitesse;
-      Game.Units[unitCount].vitesseActuelle := 0;
+      Game.Units[unitCount].vitesseActuelle := UnitTypes[i].vitesse; // Initialisation à vitesseInitiale
       Game.Units[unitCount].visible := True;
       Game.Units[unitCount].HexagoneActuel := -1; // Pas encore positionné
       Game.Units[unitCount].HexagonePrevious := -1;
@@ -429,6 +450,9 @@ begin
       Game.Units[unitCount].hasStopped := False;
       Game.Units[unitCount].hasMoved := False;
       Game.Units[unitCount].MustMove := False;
+      Game.Units[unitCount].hasTrajectoryCalculated := False; // Initialisation du nouvel état
+      Game.Units[unitCount].trajetIndex := 0; // Initialisation de l'index de trajet
+      Game.Units[unitCount].isReached := False; // Initialisation de l'indicateur d'arrivée
       // Initialiser les champs supplémentaires
       Game.Units[unitCount].BtnPerim := RectangleCreate(0, 0, 0, 0);
       Game.Units[unitCount].PositionActuelle := Vector2Create(0, 0);
@@ -463,14 +487,21 @@ begin
       if Game.Units[unitCount].limage.data = nil then
       begin
         WriteLn('Erreur : Impossible de charger l''image ', Game.Units[unitCount].Fileimage, ' pour l''unité ', unitCount);
-        Game.Units[unitCount].limage := defaultImage; // Utiliser l'image par défaut
+      //  Game.Units[unitCount].limage := defaultImage; // Utiliser l'image par défaut
       end;
 
       Game.Units[unitCount].latexture := LoadTextureFromImage(Game.Units[unitCount].limage);
       if Game.Units[unitCount].latexture.id = 0 then
       begin
         WriteLn('Erreur : Impossible de charger la texture pour l''unité ', unitCount);
-        Game.Units[unitCount].latexture := LoadTextureFromImage(defaultImage); // Utiliser la texture par défaut
+        //Game.Units[unitCount].latexture := LoadTextureFromImage(defaultImage); // Utiliser la texture par défaut
+      end;
+
+      // Charger une image de décès par défaut (à adapter selon les ressources disponibles)
+      Game.Units[unitCount].deathImage := LoadTexture('resources/soldat/death_icon.png'); // À adapter selon le chemin réel
+      if Game.Units[unitCount].deathImage.id = 0 then
+      begin
+        WriteLn('Erreur : Impossible de charger l''image de décès pour l''unité ', unitCount);
       end;
 
       // Calculer la moitié de la largeur et de la hauteur de la texture
@@ -480,12 +511,15 @@ begin
       // Mettre à jour BtnPerim (initialement à (0, 0))
       UpdateUnitBtnPerim(unitCount);
 
-      SetLength(Game.Units[unitCount].points, 0);
+      SetLength(Game.Units[unitCount].trajet, 0); // Initialiser le tableau trajet (remplace points)
     end;
   end;
 
   // Les positions initiales des unités défenseurs ont été supprimées
   // Elles seront gérées dans gsSetupDefender
+
+  // Libérer l'image par défaut après utilisation
+//  UnloadImage(defaultImage);
 end;
 
 
@@ -784,11 +818,11 @@ begin
   TerrainCosts[6].TColor.G := 162;
   TerrainCosts[6].TColor.B := 232;
 
-  // Lac (infranchissable sauf en bateau)
+  // Mer (franchissable uniquement par les bateaux, coût de 1 pour eux)
   TerrainCosts[7].Name := 'mer';
-  TerrainCosts[7].MovementCost := 0.0;
+  TerrainCosts[7].MovementCost := 1.0; // Coût de 1 pour les bateaux
   TerrainCosts[7].DefenseMultiplier := 1.0;
-  TerrainCosts[7].IsPassable := False;
+  TerrainCosts[7].IsPassable := False; // On vérifiera dans le code si l'unité est un bateau
   TerrainCosts[7].TColor.R := 153;
   TerrainCosts[7].TColor.G := 217;
   TerrainCosts[7].TColor.B := 234;

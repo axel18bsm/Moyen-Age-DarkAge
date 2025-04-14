@@ -47,10 +47,128 @@ procedure HandleAttackerMoveOrdersUpdate;
 procedure HandleAttackerMoveOrdersDraw;
 procedure HandleDefenderMoveOrdersUpdate;
 procedure HandleDefenderMoveOrdersDraw;
+procedure HandleNewTurnUpdate;
 
 implementation
 
 
+// Nouvelle fonction pour gérer l'état gsNewTurn
+procedure HandleNewTurnUpdate;
+var
+  unitID: Integer;
+begin
+  // Afficher un message pour indiquer le début du nouveau tour
+  AddMessage('Tour ' + IntToStr(Game.CurrentPlayerTurn) + ' - Début du tour');
+
+  // Réinitialiser les variables nécessaires pour toutes les unités
+  for unitID := 1 to MAX_UNITS do
+  begin
+    if (Game.Units[unitID].numplayer = Game.CurrentPlayerTurn) and
+       not (Game.Units[unitID].etatUnite = usDead) then
+    begin
+      // Réinitialiser vitesseActuelle pour toutes les unités vivantes
+      Game.Units[unitID].vitesseActuelle := Game.Units[unitID].vitesseInitiale;
+      Writeln('Unité ', Game.CurrentPlayerTurn, ' ', IntToStr(unitID), ' - vitesseActuelle réinitialisée à ', Game.Units[unitID].vitesseActuelle);
+
+      // Réinitialiser tourMouvementTermine pour les unités avec HasMoveOrder
+      if Game.Units[unitID].HasMoveOrder then
+      begin
+        Game.Units[unitID].tourMouvementTermine := False;
+      end;
+    end;
+  end;
+
+  // Passer à la phase suivante : gsAttackerMoveOrders
+  Game.CurrentState := gsAttackerMoveOrders;
+  AddMessage('Tour ' + IntToStr(Game.CurrentPlayerTurn) + ' - Ordres de mouvement (Attaquant)');
+end;
+ // Mise à jour pour gsAttackerMoveExecute
+procedure HandleAttackerMoveExecuteUpdate;
+begin
+  // Exécuter les ordres de mouvement pour l'attaquant (numplayer = 1)
+  ExecuteMoveOrders(1);
+
+  // Appeler les fonctions de déplacement et d'affichage
+  MoveCarte2DFleche;
+  DragAndDropCarte2D;
+  ZoomCarte2D;
+  AffichageGuiBas;
+end;
+
+// Mise à jour pour gsDefenderMoveExecute
+procedure HandleDefenderMoveExecuteUpdate;
+begin
+  // Exécuter les ordres de mouvement pour le défenseur (numplayer = 2)
+  ExecuteMoveOrders(2);
+
+  // Appeler les fonctions de déplacement et d'affichage
+  MoveCarte2DFleche;
+  DragAndDropCarte2D;
+  ZoomCarte2D;
+  AffichageGuiBas;
+end;
+
+// Dessin pour gsAttackerMoveExecute (identique à HandleAttackerMoveOrdersDraw)
+procedure HandleAttackerMoveExecuteDraw;
+begin
+  BeginMode2D(camera);
+
+  // Dessiner la carte
+  DrawTexture(texture, 0, 0, WHITE);
+
+  // Dessiner les unités
+  DrawUnits;
+
+  // Dessiner un cadre jaune autour de l'unité sélectionnée
+  if Game.SelectedUnitID >= 1 then
+  begin
+    DrawRectangleLines(Round(Game.Units[Game.SelectedUnitID].PositionActuelle.x - Game.Units[Game.SelectedUnitID].TextureHalfWidth),
+                       Round(Game.Units[Game.SelectedUnitID].PositionActuelle.y - Game.Units[Game.SelectedUnitID].TextureHalfHeight),
+                       Game.Units[Game.SelectedUnitID].latexture.width,
+                       Game.Units[Game.SelectedUnitID].latexture.height,
+                       YELLOW);
+  end;
+
+  EndMode2D();
+
+  // Dessiner les bordures
+  affichageBordEcran();
+
+  // Dessiner le GUI
+  AffichageEcranGui(Game.CurrentState);
+end;
+
+// Dessin pour gsDefenderMoveExecute (identique à HandleDefenderMoveOrdersDraw)
+procedure HandleDefenderMoveExecuteDraw;
+begin
+  BeginMode2D(camera);
+
+  // Dessiner la carte
+  DrawTexture(texture, 0, 0, WHITE);
+
+  // Dessiner les unités
+  DrawUnits;
+
+  // Dessiner un cadre jaune autour de l'unité sélectionnée
+  if Game.SelectedUnitID >= 1 then
+  begin
+    DrawRectangleLines(Round(Game.Units[Game.SelectedUnitID].PositionActuelle.x - Game.Units[Game.SelectedUnitID].TextureHalfWidth),
+                       Round(Game.Units[Game.SelectedUnitID].PositionActuelle.y - Game.Units[Game.SelectedUnitID].TextureHalfHeight),
+                       Game.Units[Game.SelectedUnitID].latexture.width,
+                       Game.Units[Game.SelectedUnitID].latexture.height,
+                       YELLOW);
+  end;
+
+  EndMode2D();
+
+  // Dessiner les bordures
+  affichageBordEcran();
+
+  // Dessiner le GUI
+  AffichageEcranGui(Game.CurrentState);
+end;
+
+// Fonction commune pour gérer les ordres de mouvement (attaquant ou défenseur)
 // Fonction commune pour gérer les ordres de mouvement (attaquant ou défenseur)
 procedure HandleMoveOrders(numplayer: Integer);
 var
@@ -106,15 +224,19 @@ begin
     begin
       if (Game.Units[i].HexagoneActuel = clickedHexID) and (Game.Units[i].numplayer = numplayer) then
       begin
-        if unit1 = -1 then
-          unit1 := i
-        else if unit2 = -1 then
-          unit2 := i;
+        // Vérifier que l'unité est vivante (etatUnite = usFull ou usDamaged)
+        if (Game.Units[i].etatUnite = usFull) or (Game.Units[i].etatUnite = usDamaged) then
+        begin
+          if unit1 = -1 then
+            unit1 := i
+          else if unit2 = -1 then
+            unit2 := i;
+        end;
       end;
     end;
 
     // Sélectionner une unité selon le type de clic
-    if unit1 <> -1 then // Au moins une unité trouvée
+    if unit1 <> -1 then // Au moins une unité vivante trouvée
     begin
       if doubleClick and (unit2 <> -1) then
       begin
@@ -140,7 +262,7 @@ begin
     end
     else
     begin
-      // Aucune unité sur cet hexagone, sélectionner l'hexagone
+      // Aucune unité vivante sur cet hexagone, sélectionner l'hexagone
       Game.SelectedUnitID := -1; // Désélectionner toute unité
       Game.LastClickedHexID := clickedHexID; // Stocker l'hexagone cliqué pour l'affichage
       Game.LastDestinationHexID := -1; // Réinitialiser les informations de la destination
@@ -150,20 +272,29 @@ begin
   // Étape 4 : Gérer l'ordre de mouvement (clic droit)
   if IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) and (Game.SelectedUnitID >= 1) and (clickedHexID > 0) then
   begin
-    // Vérifier que l'unité sélectionnée appartient à l'armée spécifiée
-    if Game.Units[Game.SelectedUnitID].numplayer = numplayer then
+    // Vérifier que l'unité sélectionnée appartient à l'armée spécifiée et est vivante
+    if (Game.Units[Game.SelectedUnitID].numplayer = numplayer) and
+       ((Game.Units[Game.SelectedUnitID].etatUnite = usFull) or (Game.Units[Game.SelectedUnitID].etatUnite = usDamaged)) then
     begin
+      // Réinitialiser l'état de calcul de la trajectoire
+      Game.Units[Game.SelectedUnitID].hasTrajectoryCalculated := False;
       // Stocker la destination dans l'unité
       Game.Units[Game.SelectedUnitID].PositionFinale := worldPosition;
       Game.Units[Game.SelectedUnitID].HasMoveOrder := True;
 
-      // Stocker l'hexagone de destination pour l'affichage
-      Game.LastDestinationHexID := clickedHexID;
+      // Calculer la trajectoire si elle n'a pas encore été calculée
+      if not Game.Units[Game.SelectedUnitID].hasTrajectoryCalculated then
+      begin
+        CalculateTrajectory(Game.SelectedUnitID);
+      end;
 
       // Ajouter un message dans le GUI bas
       AddMessage('L''unité ' + armyText + ' ' + IntToStr(Game.SelectedUnitID) + ' ' + Game.Units[Game.SelectedUnitID].TypeUnite.lenom +
                  ' va à la destination ' + IntToStr(Round(worldPosition.x)) + ', ' + IntToStr(Round(worldPosition.y)) +
                  ' hexagone ' + IntToStr(clickedHexID));
+
+      // Stocker l'hexagone de destination pour l'affichage
+      Game.LastDestinationHexID := clickedHexID;
     end;
   end;
 end;
@@ -291,6 +422,7 @@ begin
 end;
 
 // Affiche les informations générales (titre, tour, joueur, état)
+// Affiche les informations générales (titre, tour, joueur, état)
 procedure DrawGeneralInfo;
 var
   playerText: string;
@@ -332,8 +464,20 @@ begin
   case Game.CurrentState of
     gsSetupAttacker: stateDisplayText := 'Placement des troupes (Attaquant)';
     gsSetupDefender: stateDisplayText := 'Placement des troupes (Défenseur)';
+    gsAttackerMoveOrders: stateDisplayText := 'Ordres de mouvement (Attaquant)';
+    gsAttackerMoveExecute: stateDisplayText := 'Exécution des mouvements (Attaquant)';
+    gsAttackerBattleOrders: stateDisplayText := 'Ordres de bataille (Attaquant)';
+    gsAttackerBattleExecute: stateDisplayText := 'Exécution des batailles (Attaquant)';
+    gsDefenderMoveOrders: stateDisplayText := 'Ordres de mouvement (Défenseur)';
+    gsDefenderMoveExecute: stateDisplayText := 'Exécution des mouvements (Défenseur)';
+    gsDefenderBattleOrders: stateDisplayText := 'Ordres de bataille (Défenseur)';
+    gsDefenderBattleExecute: stateDisplayText := 'Exécution des batailles (Défenseur)';
+    gsCheckVictory:
+      if Game.CurrentPlayer.IsAttacker then
+        stateDisplayText := 'Vérification des conditions de victoire (Attaquant)'
+      else
+        stateDisplayText := 'Vérification des conditions de victoire (Défenseur)';
     gsPlayerturn: stateDisplayText := 'Tour du joueur';
-    gsCheckVictory: stateDisplayText := 'Vérification de la victoire';
     gsGameOver: stateDisplayText := 'Fin du jeu';
     else stateDisplayText := stateText; // Par défaut, utiliser le nom brut
   end;
@@ -366,9 +510,6 @@ begin
 end;
 
 // Affiche les boutons (Suivant, Passer le tour, Menu) et gère la boîte de dialogue
-
-// Affiche les boutons (Suivant, Menu) et gère la boîte de dialogue
-// Affiche les boutons (Suivant, Menu) et gère la boîte de dialogue
 // Affiche les boutons (Suivant, Menu) et gère la boîte de dialogue
 procedure DrawButtons(depart: TGameState);
 var
@@ -469,15 +610,160 @@ begin
         if dialogResult = 1 then // Oui
         begin
           Game.ShowConfirmDialog := False;
-          Game.CurrentState := gsDefenderMoveOrders; // Passer à gsDefenderMoveOrders (en attendant gsAttackerMoveExecute)
-          Game.CurrentPlayer := Game.Defender; // Mettre à jour le joueur actif
+          Game.CurrentState := gsAttackerMoveExecute; // Passer à gsAttackerMoveExecute
+          Game.CurrentPlayer := Game.Attacker; // S'assurer que le joueur actif est l'attaquant
           // Ajouter le message pour le nouvel état
-          if Game.Defender.PlayerType = ptAI then
+          if Game.Attacker.PlayerType = ptAI then
             playerText := 'IA'
           else
             playerText := 'Humain';
-          AddMessage(playerText + ' - Ordres de mouvement (Défenseur)');
-          WriteLn('Message ajouté : ' + playerText + ' - Ordres de mouvement (Défenseur)'); // Message de débogage
+          AddMessage(playerText + ' - Exécution des mouvements (Attaquant)');
+          WriteLn('Message ajouté : ' + playerText + ' - Exécution des mouvements (Attaquant)'); // Message de débogage
+        end
+        else if dialogResult = 2 then // Non
+        begin
+          Game.ShowConfirmDialog := False; // Fermer la boîte de dialogue
+        end;
+      end;
+    end;
+
+    gsAttackerMoveExecute:
+    begin
+      if not Game.ShowConfirmDialog then
+      begin
+        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
+        begin
+          Game.ShowConfirmDialog := True; // Afficher la boîte de dialogue
+        end;
+      end
+      else
+      begin
+        // Afficher la boîte de dialogue de confirmation
+        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin de l''exécution des mouvements ?', 'Oui;Non');
+        if dialogResult = 1 then // Oui
+        begin
+          Game.ShowConfirmDialog := False;
+          Game.CurrentState := gsAttackerBattleOrders; // Passer à gsAttackerBattleOrders
+          Game.CurrentPlayer := Game.Attacker; // S'assurer que le joueur actif est l'attaquant
+          // Ajouter le message pour le nouvel état
+          if Game.Attacker.PlayerType = ptAI then
+            playerText := 'IA'
+          else
+            playerText := 'Humain';
+          AddMessage(playerText + ' - Ordres de bataille (Attaquant)');
+          WriteLn('Message ajouté : ' + playerText + ' - Ordres de bataille (Attaquant)'); // Message de débogage
+        end
+        else if dialogResult = 2 then // Non
+        begin
+          Game.ShowConfirmDialog := False; // Fermer la boîte de dialogue
+        end;
+      end;
+    end;
+
+    gsAttackerBattleOrders:
+    begin
+      if not Game.ShowConfirmDialog then
+      begin
+        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
+        begin
+          Game.ShowConfirmDialog := True; // Afficher la boîte de dialogue
+        end;
+      end
+      else
+      begin
+        // Afficher la boîte de dialogue de confirmation
+        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin des ordres de bataille ?', 'Oui;Non');
+        if dialogResult = 1 then // Oui
+        begin
+          Game.ShowConfirmDialog := False;
+          Game.CurrentState := gsAttackerBattleExecute; // Passer à gsAttackerBattleExecute
+          Game.CurrentPlayer := Game.Attacker; // S'assurer que le joueur actif est l'attaquant
+          // Ajouter le message pour le nouvel état
+          if Game.Attacker.PlayerType = ptAI then
+            playerText := 'IA'
+          else
+            playerText := 'Humain';
+          AddMessage(playerText + ' - Exécution des batailles (Attaquant)');
+          WriteLn('Message ajouté : ' + playerText + ' - Exécution des batailles (Attaquant)'); // Message de débogage
+        end
+        else if dialogResult = 2 then // Non
+        begin
+          Game.ShowConfirmDialog := False; // Fermer la boîte de dialogue
+        end;
+      end;
+    end;
+
+    gsAttackerBattleExecute:
+    begin
+      if not Game.ShowConfirmDialog then
+      begin
+        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
+        begin
+          Game.ShowConfirmDialog := True; // Afficher la boîte de dialogue
+        end;
+      end
+      else
+      begin
+        // Afficher la boîte de dialogue de confirmation
+        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin de l''exécution des batailles ?', 'Oui;Non');
+        if dialogResult = 1 then // Oui
+        begin
+          Game.ShowConfirmDialog := False;
+          Game.CurrentState := gsCheckVictory; // Passer à gsCheckVictory
+          Game.CurrentPlayer := Game.Attacker; // S'assurer que le joueur actif est l'attaquant
+          AddMessage('Vérification des conditions de zealotement (Attaquant)');
+          WriteLn('Message ajouté : Vérification des conditions de victoire (Attaquant)'); // Message de débogage
+        end
+        else if dialogResult = 2 then // Non
+        begin
+          Game.ShowConfirmDialog := False; // Fermer la boîte de dialogue
+        end;
+      end;
+    end;
+
+    gsCheckVictory:
+    begin
+      if not Game.ShowConfirmDialog then
+      begin
+        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
+        begin
+          Game.ShowConfirmDialog := True; // Afficher la boîte de dialogue
+        end;
+      end
+      else
+      begin
+        // Afficher la boîte de dialogue de confirmation
+        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin de la vérification ?', 'Oui;Non');
+        if dialogResult = 1 then // Oui
+        begin
+          Game.ShowConfirmDialog := False;
+          // Déterminer l'état suivant en fonction du joueur actif
+          if Game.CurrentPlayer.IsAttacker then
+          begin
+            Game.CurrentState := gsDefenderMoveOrders; // Passer à gsDefenderMoveOrders
+            Game.CurrentPlayer := Game.Defender; // Mettre à jour le joueur actif
+            // Ajouter le message pour le nouvel état
+            if Game.Defender.PlayerType = ptAI then
+              playerText := 'IA'
+            else
+              playerText := 'Humain';
+            AddMessage(playerText + ' - Ordres de mouvement (Défenseur)');
+            WriteLn('Message ajouté : ' + playerText + ' - Ordres de mouvement (Défenseur)'); // Message de débogage
+          end
+          else
+          begin
+            // Après le tour du défenseur, passer au tour suivant
+            Inc(Game.CurrentTurn);
+            Game.CurrentState := gsAttackerMoveOrders; // Revenir à gsAttackerMoveOrders
+            Game.CurrentPlayer := Game.Attacker; // Mettre à jour le joueur actif
+            // Ajouter le message pour le nouvel état
+            if Game.Attacker.PlayerType = ptAI then
+              playerText := 'IA'
+            else
+              playerText := 'Humain';
+            AddMessage(playerText + ' - Ordres de mouvement (Attaquant, tour ' + IntToStr(Game.CurrentTurn) + ')');
+            WriteLn('Message ajouté : ' + playerText + ' - Ordres de mouvement (Attaquant, tour ' + IntToStr(Game.CurrentTurn) + ')'); // Message de débogage
+          end;
         end
         else if dialogResult = 2 then // Non
         begin
@@ -502,7 +788,7 @@ begin
         if dialogResult = 1 then // Oui
         begin
           Game.ShowConfirmDialog := False;
-          Game.CurrentState := gsDefenderMoveExecute; // Passer à l'état suivant
+          Game.CurrentState := gsDefenderMoveExecute; // Passer à gsDefenderMoveExecute
           Game.CurrentPlayer := Game.Defender; // S'assurer que le joueur actif est le défenseur
           // Ajouter le message pour le nouvel état
           if Game.Defender.PlayerType = ptAI then
@@ -519,15 +805,103 @@ begin
       end;
     end;
 
-    gsAttackerMoveExecute,
-    gsAttackerBattleOrders,
-    gsAttackerBattleExecute,
-    gsDefenderMoveExecute,
-    gsDefenderBattleOrders,
-    gsDefenderBattleExecute,
-    gsCheckVictory:
+    gsDefenderMoveExecute:
     begin
-      // Pas de bouton "Suivant" pour ces états (non implémentés)
+      if not Game.ShowConfirmDialog then
+      begin
+        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
+        begin
+          Game.ShowConfirmDialog := True; // Afficher la boîte de dialogue
+        end;
+      end
+      else
+      begin
+        // Afficher la boîte de dialogue de confirmation
+        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin de l''exécution des mouvements ?', 'Oui;Non');
+        if dialogResult = 1 then // Oui
+        begin
+          Game.ShowConfirmDialog := False;
+          Game.CurrentState := gsDefenderBattleOrders; // Passer à gsDefenderBattleOrders
+          Game.CurrentPlayer := Game.Defender; // S'assurer que le joueur actif est le défenseur
+          // Ajouter le message pour le nouvel état
+          if Game.Defender.PlayerType = ptAI then
+            playerText := 'IA'
+          else
+            playerText := 'Humain';
+          AddMessage(playerText + ' - Ordres de bataille (Défenseur)');
+          WriteLn('Message ajouté : ' + playerText + ' - Ordres de bataille (Défenseur)'); // Message de débogage
+        end
+        else if dialogResult = 2 then // Non
+        begin
+          Game.ShowConfirmDialog := False; // Fermer la boîte de dialogue
+        end;
+      end;
+    end;
+
+    gsDefenderBattleOrders:
+    begin
+      if not Game.ShowConfirmDialog then
+      begin
+        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
+        begin
+          Game.ShowConfirmDialog := True; // Afficher la boîte de dialogue
+        end;
+      end
+      else
+      begin
+        // Afficher la boîte de dialogue de confirmation
+        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin des ordres de bataille ?', 'Oui;Non');
+        if dialogResult = 1 then // Oui
+        begin
+          Game.ShowConfirmDialog := False;
+          Game.CurrentState := gsDefenderBattleExecute; // Passer à gsDefenderBattleExecute
+          Game.CurrentPlayer := Game.Defender; // S'assurer que le joueur actif est le défenseur
+          // Ajouter le message pour le nouvel état
+          if Game.Defender.PlayerType = ptAI then
+            playerText := 'IA'
+          else
+            playerText := 'Humain';
+          AddMessage(playerText + ' - Exécution des batailles (Défenseur)');
+          WriteLn('Message ajouté : ' + playerText + ' - Exécution des batailles (Défenseur)'); // Message de débogage
+        end
+        else if dialogResult = 2 then // Non
+        begin
+          Game.ShowConfirmDialog := False; // Fermer la boîte de dialogue
+        end;
+      end;
+    end;
+
+    gsDefenderBattleExecute:
+    begin
+      if not Game.ShowConfirmDialog then
+      begin
+        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
+        begin
+          Game.ShowConfirmDialog := True; // Afficher la boîte de dialogue
+        end;
+      end
+      else
+      begin
+        // Afficher la boîte de dialogue de confirmation
+        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin de l''exécution des batailles ?', 'Oui;Non');
+        if dialogResult = 1 then // Oui
+        begin
+          Game.ShowConfirmDialog := False;
+          Game.CurrentState := gsCheckVictory; // Passer à gsCheckVictory
+          Game.CurrentPlayer := Game.Defender; // S'assurer que le joueur actif est le défenseur
+          AddMessage('Vérification des conditions de victoire (Défenseur)');
+          WriteLn('Message ajouté : Vérification des conditions de victoire (Défenseur)'); // Message de débogage
+        end
+        else if dialogResult = 2 then // Non
+        begin
+          Game.ShowConfirmDialog := False; // Fermer la boîte de dialogue
+        end;
+      end;
+    end;
+
+    gsGameOver:
+    begin
+      // Pas de bouton "Suivant" pour cet état
     end;
   end;
 
@@ -1215,8 +1589,31 @@ end;
 // Gère le rendu pour les états non implémentés
 procedure HandleNotImplementedDraw;
 begin
-  ClearBackground(BLACK);
-  DrawText('Mode désactivé', screenWidth div 2 - 50, screenHeight div 2, 20, WHITE);
+  BeginMode2D(camera);
+
+  // Dessiner la carte
+  DrawTexture(texture, 0, 0, WHITE);
+
+  // Dessiner les unités
+  DrawUnits;
+
+  // Dessiner un cadre jaune autour de l'unité sélectionnée
+  if Game.SelectedUnitID >= 1 then
+  begin
+    DrawRectangleLines(Round(Game.Units[Game.SelectedUnitID].PositionActuelle.x - Game.Units[Game.SelectedUnitID].TextureHalfWidth),
+                       Round(Game.Units[Game.SelectedUnitID].PositionActuelle.y - Game.Units[Game.SelectedUnitID].TextureHalfHeight),
+                       Game.Units[Game.SelectedUnitID].latexture.width,
+                       Game.Units[Game.SelectedUnitID].latexture.height,
+                       YELLOW);
+  end;
+
+  EndMode2D();
+
+  // Dessiner les bordures
+  affichageBordEcran();
+
+  // Dessiner le GUI (bas et droit)
+  AffichageEcranGui(Game.CurrentState);
 end;
 // Ajoute un message à l'historique
 procedure AddMessage(msg: string);
@@ -1319,7 +1716,7 @@ begin
     yPos := yPos + 20;
     GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Vitesse : %d', [Game.Units[Game.SelectedUnitID].vitesseInitiale])));
     yPos := yPos + 20;
-    if Game.Units[Game.SelectedUnitID].EtatUnite = 1 then
+    if Game.Units[Game.SelectedUnitID].EtatUnite = usFull then
       unitState := 'Entière'
     else
       unitState := '1/2 Force';
@@ -1376,7 +1773,10 @@ begin
     begin
       // Centrer l'image de l'unité par rapport à PositionActuelle
       drawPos := CenterUnitOnPositionActuelle(j);
-      DrawTexture(Game.Units[j].latexture, Round(drawPos.x), Round(drawPos.y), WHITE);
+      if Game.Units[j].etatUnite = usDead then
+        DrawTexture(Game.Units[j].deathImage, Round(drawPos.x), Round(drawPos.y), WHITE)
+      else
+        DrawTexture(Game.Units[j].latexture, Round(drawPos.x), Round(drawPos.y), WHITE);
     end;
   end;
 end;
@@ -1400,7 +1800,9 @@ begin
   for i := 1 to MAX_UNITS do
   begin
     UnloadTexture(Game.Units[i].latexture);
+    UnloadTexture(Game.Units[i].deathImage); // Libérer l'image de décès
     UnloadImage(Game.Units[i].limage);
+    // Le tableau trajet est automatiquement libéré par Free Pascal (types simples)
   end;
 end;
 procedure DrawRiverTemporary;
@@ -1552,58 +1954,61 @@ begin
 end;
 
  procedure UpdateGameManager;
- begin
-   case Game.CurrentState of
-     gsInitialization: HandleInitializationUpdate;
-     gsSplashScreen: HandleSplashScreenUpdate;
-     gsMainMenu: HandleMainMenuUpdate;
-     gsNewGameMenu: HandleNewGameMenuUpdate;
-     gsSetupAttacker: HandleSetupAttackerUpdate;
-     gsSetupDefender: HandleSetupDefenderUpdate;
-     gsAttackerMoveOrders: HandleAttackerMoveOrdersUpdate;
-     gsDefenderMoveOrders: HandleDefenderMoveOrdersUpdate;
-     gsAttackerMoveExecute,
-     gsAttackerBattleOrders,
-     gsAttackerBattleExecute,
-     gsDefenderMoveExecute,
-     gsDefenderBattleOrders,
-     gsDefenderBattleExecute,
-     gsCheckVictory,
-     gsPlayerturn: DoNothing; // États non implémentés
-     gsGameOver: HandleGameOverUpdate;
-   end;
- end;
-
- procedure DrawGameManager;
- begin
-   case Game.CurrentState of
-     gsInitialization: HandleInitializationDraw;
-     gsSplashScreen: HandleSplashScreenDraw;
-     gsMainMenu: HandleMainMenuDraw;
-     gsNewGameMenu: HandleNewGameMenuDraw;
-     gsSetupAttacker: HandleSetupAttackerDraw;
-     gsSetupDefender: HandleSetupDefenderDraw;
-     gsAttackerMoveOrders: HandleAttackerMoveOrdersDraw;
-     gsDefenderMoveOrders: HandleDefenderMoveOrdersDraw;
-     gsAttackerMoveExecute,
-     gsAttackerBattleOrders,
-     gsAttackerBattleExecute,
-     gsDefenderMoveExecute,
-     gsDefenderBattleOrders,
-     gsDefenderBattleExecute,
-     gsCheckVictory,
-     gsPlayerturn: HandleNotImplementedDraw; // États non implémentés
-     gsGameOver: HandleGameOverDraw;
-   end;
- end;
-
-procedure CleanupGameManager;
 begin
-  // Libérer les ressources
-  UnloadTexture(Game.SplashScreenImage);
-  UnloadMusicStream(Game.Music);
-  CloseAudioDevice();
+  case Game.CurrentState of
+    gsInitialization: HandleInitializationUpdate;
+    gsSplashScreen: HandleSplashScreenUpdate;
+    gsMainMenu: HandleMainMenuUpdate;
+    gsNewGameMenu: HandleNewGameMenuUpdate;
+    gsSetupAttacker: HandleSetupAttackerUpdate;
+    gsSetupDefender: HandleSetupDefenderUpdate;
+    gsAttackerMoveOrders: HandleAttackerMoveOrdersUpdate;
+    gsDefenderMoveOrders: HandleDefenderMoveOrdersUpdate;
+    gsAttackerMoveExecute: HandleAttackerMoveExecuteUpdate;
+    gsDefenderMoveExecute: HandleDefenderMoveExecuteUpdate;
+    gsAttackerBattleOrders,
+    gsAttackerBattleExecute,
+    gsDefenderBattleOrders,
+    gsDefenderBattleExecute,
+    gsCheckVictory,
+    gsPlayerturn: DoNothing; // États non implémentés
+    gsGameOver: HandleGameOverUpdate;
+  end;
 end;
+
+procedure DrawGameManager;
+begin
+  case Game.CurrentState of
+    gsInitialization: HandleInitializationDraw;
+    gsSplashScreen: HandleSplashScreenDraw;
+    gsMainMenu: HandleMainMenuDraw;
+    gsNewGameMenu: HandleNewGameMenuDraw;
+    gsSetupAttacker: HandleSetupAttackerDraw;
+    gsSetupDefender: HandleSetupDefenderDraw;
+    gsAttackerMoveOrders: HandleAttackerMoveOrdersDraw;
+    gsDefenderMoveOrders: HandleDefenderMoveOrdersDraw;
+    gsAttackerMoveExecute: HandleAttackerMoveExecuteDraw;
+    gsDefenderMoveExecute: HandleDefenderMoveExecuteDraw;
+    gsAttackerBattleOrders,
+    gsAttackerBattleExecute,
+    gsDefenderBattleOrders,
+    gsDefenderBattleExecute,
+    gsCheckVictory,
+    gsPlayerturn: HandleNotImplementedDraw; // États non implémentés
+    gsGameOver: HandleGameOverDraw;
+  end;
+end;
+
+ procedure CleanupGameManager;
+ begin
+   // Libérer les ressources des unités
+   CleanupUnits;
+
+   // Libérer les autres ressources
+   UnloadTexture(Game.SplashScreenImage);
+   UnloadMusicStream(Game.Music);
+   CloseAudioDevice();
+ end;
  begin
   // Libérer les ressources des unités
   CleanupUnits;
