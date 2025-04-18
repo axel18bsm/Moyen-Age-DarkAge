@@ -20,6 +20,10 @@ Some pictures of the game
 orders movement for each unit is done :
 ![image](https://github.com/user-attachments/assets/eadd40b4-5dc8-4c95-8a6e-1668f2d4b95d)
 
+orders movements are executed 
+![image](https://github.com/user-attachments/assets/16a80d27-f324-4e47-a0f4-a61ee770c2a2)
+
+
 
 
 
