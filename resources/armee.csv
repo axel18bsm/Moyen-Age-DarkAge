@@ -1,18 +1,18 @@
-﻿N°,num_armee,unite,nombre,nom
-1,1,1,15,infanterie,sol21E.png,sol21E.png
-2,1,2,6,archer,archer1E.png,archer1E.png
-3,1,3,6,cavalier,cavalier10e.png,cavalier10d.png
-4,1,4,1,Duc,duc.png,duc.png
-5,1,5,1,Lieutenant,lieutenant.png,lieutenant.png
-6,1,6,4,trebuchet,trebuchet1e.png,trebuchet1d.png
-7,1,7,2,belier,belier2e.png,belier2d.png
-8,1,8,2,beffroi,tourdesiege1e.png,tourdesiege1d.png
-9,1,9,3,bateau,bateau2e.png,bateau2d.png
-10,2,21,9,infanterie,sol2c1e.png,sol2c1d.png
-11,2,22,4,archer,archer11E.png,archer11d.png
-12,2,23,5,cavalier,cavalier11e.png,cavalier11d.png
-13,2,24,1,comte,comte.png,comte.png
-14,2,25,1,Chef Milice,milicien.png,milicien.png
-15,2,26,2,trebuchet,trebuchet2e.png,trebuchet2d.png
-16,2,27,4,milicien,sol2v1e.png,sol2v1d.png
-17,2,28,2,bateau,bateau1E.png,bateau1d.png
+﻿N°,num_armee,unite,nombre,nom;;;;;;;
+1,1,1,15,infanterie,sol21E.png,sol21E.png;;;;;15;15;
+2,1,2,6,archer,archer1E.png,archer1E.png;;;;;6;21;
+3,1,3,6,cavalier,cavalier10e.png,cavalier10d.png;;;;;6;27;
+4,1,4,1,Duc,duc.png,duc.png;;;;;1;28;
+5,1,5,1,Lieutenant,lieutenant.png,lieutenant.png;;;;;1;29;
+6,1,6,4,trebuchet,trebuchet1e.png,trebuchet1d.png;;;;;4;33;
+7,1,7,2,belier,belier2e.png,belier2d.png;;;;;2;35;
+8,1,8,2,beffroi,tourdesiege1e.png,tourdesiege1d.png;;;;;2;37;
+9,1,9,3,bateau,bateau2e.png,bateau2d.png;;;;;3;40;
+10,2,21,9,infanterie,sol2c1e.png,sol2c1d.png;;;;;9;49;9
+11,2,22,4,archer,archer11E.png,archer11d.png;;;;;4;53;13
+12,2,23,5,cavalier,cavalier11e.png,cavalier11d.png;;;;;5;58;18
+13,2,24,1,comte,comte.png,comte.png;;;;;1;59;19
+14,2,25,1,Chef Milice,milicien.png,milicien.png;;;;;1;60;20
+15,2,26,2,trebuchet,trebuchet2e.png,trebuchet2d.png;;;;;2;62;22
+16,2,27,4,milicien,sol2v1e.png,sol2v1d.png;;;;;4;66;26
+17,2,28,2,bateau,bateau1E.png,bateau1d.png;;;;;2;68;28
