@@ -3,7 +3,7 @@ Wargame fashioned old school in the darkAges. You can execute, but movement and 
 not implemented.  Setup of units can be deployed at random or manually. 2 players Human versus
 IA.
 
-Next step :Move executed . Next step : unit figthing.
+ step finish: naval, food supplies and music . Next step : unit figthing.
 
 
 Some pictures of the game
@@ -23,6 +23,8 @@ orders movement for each unit is done :
 orders movements are executed 
 ![image](https://github.com/user-attachments/assets/16a80d27-f324-4e47-a0f4-a61ee770c2a2)
 
+naval movement  and all units before the figthing
+![image](https://github.com/user-attachments/assets/bf9c3c46-7d30-4c2d-9c0d-2b3288b6d1c6)
 
 
 
