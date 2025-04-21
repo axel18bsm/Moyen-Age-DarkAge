@@ -23,6 +23,9 @@ function SelectUnit(mouseX, mouseY: Single; playerNum: Integer): Integer;
 procedure DrawUnitSelectionFrame;
 procedure CalculateBresenhamPath(unitID, startHex, endHex: Integer);
 function GetStateDisplayText(state: TGameState): string;
+procedure AddBoat(playerNum: Integer; tour: Integer);
+procedure HandleRavitaillement;
+procedure OrderBoatReturn;
 
 
 
@@ -30,6 +33,288 @@ function GetStateDisplayText(state: TGameState): string;
 
 implementation
 uses GameManager;
+procedure AddBoat(playerNum: Integer; tour: Integer);
+var
+  hexID, unitID: Integer;
+  hexCandidates: array[0..1] of Integer;
+  freeHex: Integer;
+  unitIndex, hexIndex, checkIndex: Integer;
+begin
+  if (playerNum = 2) and (tour >= 1) and (Game.Defender.BoatCount < 2) then
+  begin
+    // Défenseur : hexagones 96 ou 192
+    hexCandidates[0] := 96;
+    hexCandidates[1] := 192;
+    unitID := -1;
+    // Chercher une unité bateau disponible (68 si 67 est déjà placé)
+    if Game.Units[68].HexagoneActuel = -1 then
+      unitID := 68;
+    if unitID = -1 then
+    begin
+      AddMessage('Échec ajout bateau défenseur : aucune unité disponible');
+      Exit; // Pas d'unité disponible, attendre
+    end;
+  end
+  else if (playerNum = 1) and (tour >= 3) and (Game.Attacker.BoatCount < 3) then
+  begin
+    // Attaquant : hexagones 319 ou 320
+    hexCandidates[0] := 319;
+    hexCandidates[1] := 320;
+    unitID := -1;
+    // Chercher une unité bateau disponible (38, 39, 40)
+    for unitIndex := 38 to 40 do
+    begin
+      if Game.Units[unitIndex].HexagoneActuel = -1 then
+      begin
+        unitID := unitIndex;
+        Break;
+      end;
+    end;
+    if unitID = -1 then
+    begin
+      AddMessage('Échec ajout bateau attaquant : aucune unité disponible');
+      Exit; // Pas d'unité disponible, attendre
+    end;
+  end
+  else
+  begin
+    AddMessage('Échec ajout bateau : conditions non remplies (playerNum=' + IntToStr(playerNum) + ', tour=' + IntToStr(tour) + ')');
+    Exit; // Conditions non remplies
+  end;
+
+  // Vérifier les hexagones candidats
+  freeHex := -1;
+  for hexIndex := 0 to 1 do
+  begin
+    hexID := hexCandidates[hexIndex];
+    if (hexID >= 1) and (hexID <= HexagonCount) and (Hexagons[hexID].TerrainType = 'mer') then
+    begin
+      // Vérifier si l'hexagone est libre
+      Game.IsOccupied := False;
+      for checkIndex := 1 to MAX_UNITS do
+      begin
+        if Game.Units[checkIndex].HexagoneActuel = hexID then
+        begin
+          Game.IsOccupied := True;
+          Break;
+        end;
+      end;
+      if not Game.IsOccupied then
+      begin
+        freeHex := hexID;
+        Break;
+      end;
+    end;
+  end;
+
+  // Si aucun hexagone libre, choisir aléatoirement
+  if freeHex = -1 then
+  begin
+    freeHex := hexCandidates[Random(2)];
+    AddMessage('Aucun hexagone libre, tentative aléatoire sur ' + IntToStr(freeHex));
+  end;
+
+  if freeHex >= 1 then
+  begin
+    CenterUnitOnHexagon(unitID, freeHex);
+    if playerNum = 2 then
+    begin
+      Game.Units[unitID].HexagoneDepart := freeHex; // Définir l'hexagone de départ
+      Game.Units[unitID].IsLoaded := True; // Bateau chargé
+      Inc(Game.Defender.BoatCount);
+      AddMessage('Nouveau bateau défenseur (unité ' + IntToStr(unitID) + ') arrivé sur hexagone ' + IntToStr(freeHex));
+    end
+    else
+    begin
+      Inc(Game.Attacker.BoatCount);
+      AddMessage('Nouveau bateau attaquant (unité ' + IntToStr(unitID) + ') arrivé sur hexagone ' + IntToStr(freeHex));
+    end;
+  end
+  else
+    AddMessage('Échec ajout bateau : aucun hexagone valide');
+end;
+
+procedure HandleRavitaillement;
+var
+  i, j: Integer;
+  consumption, ravitaillementContribution: Single;
+  stock: Single;
+  unitID: Integer;
+  deliveryHexes: array[0..2] of Integer;
+  isBlocked: Boolean;
+begin
+  consumption := 0.0;
+  ravitaillementContribution := 0.0;
+  stock := Game.Defender.Ravitaillement;
+  deliveryHexes[0] := 217;
+  deliveryHexes[1] := 250;
+  deliveryHexes[2] := 282;
+
+  // Vérifier les blocages par les bateaux attaquants
+  for i := 0 to 2 do
+  begin
+    isBlocked := False;
+    for j := 38 to 40 do
+    begin
+      if Game.Units[j].HexagoneActuel = deliveryHexes[i] then
+      begin
+        isBlocked := True;
+        Break;
+      end;
+    end;
+    if isBlocked then
+      AddMessage('Livraison bloquée sur hexagone ' + IntToStr(deliveryHexes[i]) + ' par un bateau attaquant');
+  end;
+
+  // Calculer la contribution des bateaux (unités 67 et 68)
+  for i := 67 to 68 do
+  begin
+    if ((Game.Units[i].HexagoneActuel = 217) or
+        (Game.Units[i].HexagoneActuel = 250) or
+        (Game.Units[i].HexagoneActuel = 282)) and
+       Game.Units[i].IsLoaded then
+    begin
+      if Game.Units[i].EtatUnite = 1 then
+      begin
+        ravitaillementContribution := ravitaillementContribution + 40.0;
+        AddMessage('Bateau ' + IntToStr(i) + ' a livré + 40 points sur hexagone ' + IntToStr(Game.Units[i].HexagoneActuel));
+      end
+      else
+      begin
+        ravitaillementContribution := ravitaillementContribution + 20.0;
+        AddMessage('Bateau ' + IntToStr(i) + ' a livré +20 points sur hexagone ' + IntToStr(Game.Units[i].HexagoneActuel));
+      end;
+      Game.Units[i].IsLoaded := False; // Décharger le bateau
+      AddMessage('Bateau ' + IntToStr(i) + ' doit retourner à hexagone ' + IntToStr(Game.Units[i].HexagoneDepart) + ' pour recharger');
+    end;
+  end;
+
+  // Calculer la consommation totale
+  for i := 41 to 68 do
+  begin
+    if Game.Units[i].HexagoneActuel >= 1 then
+    begin
+      if Game.Units[i].EtatUnite = 1 then
+        consumption := consumption + 1.0
+      else
+        consumption := consumption + 0.5;
+    end;
+  end;
+
+  // Mettre à jour le stock
+  stock := stock + ravitaillementContribution;
+  stock := stock - consumption;
+  AddMessage(Format('Bateaux défenseurs : +%.1f points, consommé %.1f points, stock restant : %.1f', [ravitaillementContribution, consumption, stock]));
+
+  // Appliquer les pénalités si nécessaire
+  if stock < 0 then
+  begin
+    stock := -stock; // Quantité manquante
+    for unitID := 41 to 68 do
+    begin
+      if Game.Units[unitID].HexagoneActuel >= 1 then
+      begin
+        if Game.Units[unitID].EtatUnite = 1 then
+        begin
+          if stock >= 1.0 then
+          begin
+            stock := stock - 1.0;
+            Game.Units[unitID].EtatUnite := 0;
+            Game.Units[unitID].Force := Game.Units[unitID].TypeUnite.forceDem;
+            UnloadTexture(Game.Units[unitID].latexture);
+            Game.Units[unitID].limage := LoadImage(Game.Units[unitID].FileimageAbime);
+            Game.Units[unitID].latexture := LoadTextureFromImage(Game.Units[unitID].limage);
+            UpdateUnitBtnPerim(unitID);
+            AddMessage('Unité ' + IntToStr(unitID) + ' (' + Game.Units[unitID].TypeUnite.lenom + ') abîmée');
+          end;
+        end
+        else
+        begin
+          if stock >= 0.5 then
+          begin
+            stock := stock - 0.5;
+            Game.Units[unitID].HexagoneActuel := -1;
+            Game.Units[unitID].visible := False;
+            if (unitID = 67) or (unitID = 68) then
+            begin
+              Dec(Game.Defender.BoatCount);
+              AddMessage('Bateau ' + IntToStr(unitID) + ' coulé, nouveau bateau arrivera au tour suivant');
+            end
+            else
+              AddMessage('Unité ' + IntToStr(unitID) + ' (' + Game.Units[unitID].TypeUnite.lenom + ') éliminée');
+          end;
+        end;
+      end;
+    end;
+  end;
+
+  Game.Defender.Ravitaillement := stock;
+end;
+
+procedure OrderBoatReturn;
+var
+  i, targetHex: Integer;
+  deliveryHexes: array[0..2] of Integer;
+  j,k: Integer;
+  isBlocked: Boolean;
+begin
+  // Seulement pour IA ou mode automatique
+  if (Game.Defender.PlayerType = ptAI) or (Game.Defender.SetupType = stRandom) then
+  begin
+    deliveryHexes[0] := 217;
+    deliveryHexes[1] := 250;
+    deliveryHexes[2] := 282;
+
+    for i := 67 to 68 do
+    begin
+      if Game.Units[i].HexagoneActuel >= 1 then
+      begin
+        if Game.Units[i].IsLoaded then
+        begin
+          // Bateau chargé, chercher un hexagone de livraison libre
+          targetHex := -1;
+          for j := 0 to 2 do
+          begin
+            isBlocked := False;
+            for k := 38 to 40 do
+            begin
+              if Game.Units[k].HexagoneActuel = deliveryHexes[j] then
+              begin
+                isBlocked := True;
+                Break;
+              end;
+            end;
+            if not isBlocked then
+            begin
+              targetHex := deliveryHexes[j];
+              Break;
+            end;
+          end;
+          if targetHex = -1 then
+            Continue; // Tous les hexagones bloqués, attendre
+        end
+        else
+        begin
+          // Bateau déchargé, retourner à l'hexagone de départ
+          targetHex := Game.Units[i].HexagoneDepart;
+        end;
+
+        // Donner un ordre de mouvement
+        if (targetHex >= 1) and (Game.Units[i].HexagoneActuel <> targetHex) then
+        begin
+          Game.Units[i].PositionFinale := Vector2Create(Hexagons[targetHex].CenterX, Hexagons[targetHex].CenterY);
+          Game.Units[i].HasMoveOrder := True;
+          Game.Units[i].HexagoneCible := targetHex;
+          CalculateBresenhamPath(i, Game.Units[i].HexagoneActuel, targetHex);
+          Game.Units[i].CurrentPathIndex := 0;
+          Game.Units[i].tourMouvementTermine := False;
+          Game.Units[i].hasStopped := False;
+          AddMessage('Bateau ' + IntToStr(i) + ' se dirige vers hexagone ' + IntToStr(targetHex));
+        end;
+      end;
+    end;
+  end;
+end;
 
 function GetStateDisplayText(state: TGameState): string;
 begin
@@ -757,7 +1042,7 @@ var
   wheelMove: Single;
   mouseWorldPosBefore, mouseWorldPosAfter: TVector2;
   zoomFactor: Single = 0.1; // Sensibilité du zoom
-  minZoom: Single = 0.8;   // Zoom minimal (50% de la taille originale)
+  minZoom: Single = 0.5;   // Zoom minimal (50% de la taille originale)
   maxZoom: Single = 2.0;   // Zoom maximal (200% de la taille originale)
   mousePos: TVector2;
 begin

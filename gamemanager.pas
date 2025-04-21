@@ -5,7 +5,7 @@ unit GameManager;
 interface
 
 uses
-  Classes, SysUtils, raylib, raygui, init, TypInfo, UnitProcFunc;
+  Classes, SysUtils, raylib, raygui, init,math, TypInfo, UnitProcFunc;
 
 // Procédures pour gérer le GameManager
 procedure InitializeGameManager;
@@ -128,6 +128,11 @@ begin
           Game.Units[i].tourMouvementTermine := True;
           Game.Units[i].hasStopped := False;
           UpdateUnitBtnPerim(i);
+          if (i in [67, 68]) and (Game.Units[i].HexagoneActuel = Game.Units[i].HexagoneDepart) then
+          begin
+            Game.Units[i].IsLoaded := True;
+            AddMessage('Bateau ' + IntToStr(i) + ' a rechargé sur hexagone ' + IntToStr(Game.Units[i].HexagoneDepart));
+          end;
           Break;
         end;
 
@@ -387,22 +392,49 @@ end;
 
 procedure HandlePlayerTurnUpdate;
 var
-  i: Integer;
-  startIndex, endIndex: Integer;
+  unitIndex: Integer;
 begin
   HandleCommonInput(0, False);
-   // Réinitialiser les champs de mouvement pour les unités qui ont un ordre
-  for i := 1 to 68 do
-  begin
 
-      Game.Units[i].distanceMaxi := Game.Units[i].vitesseInitiale;
-      Game.Units[i].tourMouvementTermine := False;
-      Game.Units[i].hasStopped := False;
+  // Traiter les actions du tour une seule fois
+  if not Game.PlayerTurnProcessed then
+  begin
+    AddMessage('Début tour ' + IntToStr(Game.CurrentTurn) + ', BoatCount défenseur=' + IntToStr(Game.Defender.BoatCount) + ', attaquant=' + IntToStr(Game.Attacker.BoatCount));
+
+    // Ajouter des bateaux si possible
+    if Game.CurrentTurn >= 1 then
+      AddBoat(2, Game.CurrentTurn); // Défenseur
+    if Game.CurrentTurn >= 3 then
+      AddBoat(1, Game.CurrentTurn); // Attaquant
+
+    // Gérer le ravitaillement
+    HandleRavitaillement;
+
+    // Gérer le retour des bateaux pour l'IA ou mode automatique
+    OrderBoatReturn;
+
+    // Réinitialiser les champs de mouvement
+    for unitIndex := 1 to 68 do
+    begin
+      Game.Units[unitIndex].distanceMaxi := Game.Units[unitIndex].vitesseInitiale;
+      Game.Units[unitIndex].tourMouvementTermine := False;
+      Game.Units[unitIndex].hasStopped := False;
     end;
+
+    Game.PlayerTurnProcessed := True; // Marquer le tour comme traité
+    AddMessage('Traitements gsplayerturn effectués pour le tour ' + IntToStr(Game.CurrentTurn));
+  end;
 end;
 procedure HandleCheckVictoryDefenderUpdate;
 begin
   HandleCommonInput(0, False);
+
+  // Vérifier si le tour maximum est atteint
+  if Game.CurrentTurn = MAX_TOURS then
+  begin
+    Game.CurrentState := gsGameOver;
+    AddMessage('Les mercenaires n''ont plus d''argent, les attaquants ont perdu');
+  end;
 end;
 procedure HandleDefenderBattleExecuteUpdate;
 begin
@@ -690,17 +722,11 @@ var
   stateDisplayText: string;
   tourText: string;
 begin
-  // Dessiner le GUI dans la bordure droite
   GuiPanel(RectangleCreate(screenWidth - rightBorderWidth, 0, rightBorderWidth, screenHeight), 'Informations');
-
-  // Titre centré "Moyen Age"
   GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + (rightBorderWidth - 100) div 2, 20, 100, 20), 'Moyen Age');
-
-  // Nombre de tours
   tourText := Format('N° Tour : %d/%d', [Game.CurrentTurn, MAX_TOURS]);
   GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 40, 230, 20), PChar(tourText));
 
-  // Informations sur le joueur
   if Game.CurrentPlayer.IsAttacker then
   begin
     playerText := 'Attaquant';
@@ -719,7 +745,6 @@ begin
   end;
   GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 60, 230, 20), PChar('Joueur : ' + playerText));
 
-  // Informations sur l'état (GameState)
   stateText := GetEnumName(TypeInfo(TGameState), Ord(Game.CurrentState));
   case Game.CurrentState of
     gsSetupAttacker: stateDisplayText := 'Placement des troupes (Attaquant)';
@@ -734,11 +759,15 @@ begin
     gsDefenderBattleOrders: stateDisplayText := 'Ordres de combat (Défenseur)';
     gsDefenderBattleExecute: stateDisplayText := 'Exécution des combats (Défenseur)';
     gsCheckVictoryDefender: stateDisplayText := 'Vérification victoire (Défenseur)';
-    gsPlayerturn: stateDisplayText := 'Tour du joueur';
+    gsplayerturn: stateDisplayText := 'Tour du joueur';
     gsGameOver: stateDisplayText := 'Fin du jeu';
-    else stateDisplayText := stateText; // Par défaut, utiliser le nom brut
+    else stateDisplayText := stateText;
   end;
   GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 80, 230, 20), PChar('État : ' + stateDisplayText));
+
+  // Afficher le ravitaillement pour le défenseur
+  if not Game.CurrentPlayer.IsAttacker then
+    GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 100, 230, 20), PChar(Format('Ravitaillement : %.1f', [Game.Defender.Ravitaillement])));
 end;
 
 // Affiche les informations de l'hexagone sélectionné et des unités
@@ -747,7 +776,7 @@ var
   yPos: Integer;
   unitCount: Integer;
 begin
-  yPos := 110; // Position Y de départ pour les informations de l'hexagone
+  yPos := 120; // Position Y de départ pour les informations de l'hexagone
   unitCount := DisplayHexAndUnitsInfo(clickedHexID, yPos);
 
   // Ajuster yPos après l'affichage des informations
@@ -773,6 +802,7 @@ var
   dialogResult: Integer;
   suivantButtonY: Integer;
   playerText: string;
+  musicButtonText:String;
 begin
   suivantButtonY := screenHeight - bottomBorderHeight - 70;
 
@@ -1079,19 +1109,28 @@ begin
         begin
           Game.ShowConfirmDialog := False;
           Inc(Game.CurrentTurn);
-          Game.CurrentState := gsAttackerMoveOrders;
-          Game.CurrentPlayer := Game.Attacker;
-          if Game.Attacker.PlayerType = ptAI then
-            playerText := 'IA'
+          Game.PlayerTurnProcessed := False; // Réinitialiser pour le tour suivant
+          if Game.CurrentTurn <= MAX_TOURS then
+          begin
+            Game.CurrentState := gsAttackerMoveOrders;
+            Game.CurrentPlayer := Game.Attacker;
+            if Game.Attacker.PlayerType = ptAI then
+              playerText := 'IA'
+            else
+              playerText := 'Humain';
+            AddMessage('Tour ' + IntToStr(Game.CurrentTurn) + ' - Ordres de mouvement (Attaquant)');
+          end
           else
-            playerText := 'Humain';
-          AddMessage('Tour ' + IntToStr(Game.CurrentTurn) + ' - Ordres de mouvement (Attaquant)');
+          begin
+            Game.CurrentState := gsGameOver;
+            AddMessage('Les mercenaires n''ont plus d''argent, les attaquants ont perdu');
+          end;
         end
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
       end;
+      End;
     end;
-  end;
 
   if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, screenHeight - bottomBorderHeight - 40, 230, 30), 'Menu') <> 0 then
   begin
@@ -1179,32 +1218,24 @@ begin
   begin
     if Game.MusicPlaying then
     begin
-      StopMusicStream(Game.Music);
+      PauseMusicStream(Game.Music); // Mettre en pause au lieu d'arrêter
       Game.MusicPlaying := False;
-      AddMessage('Musique arrêtée');
+      AddMessage('Musique mise en pause');
     end
     else
     begin
+      ResumeMusicStream(Game.Music);
       PlayMusicStream(Game.Music);
       Game.MusicPlaying := True;
       AddMessage('Musique reprise');
     end;
   end;
 
-  // Mettre à jour le timer du splash screen
-  Game.SplashScreenTimer := Game.SplashScreenTimer + GetFrameTime();
-
-  // Passer à l'état suivant si la touche Espace est pressée ou après 10 secondes
+  // Passer à l'état suivant si la touche Espace est pressée ou après 50 secondes
   if IsKeyPressed(KEY_SPACE) or (Game.SplashScreenTimer >= 50) then
   begin
-    Game.CurrentState := gsMainMenu; // Passer au menu principal
-    Game.SplashScreenTimer := 0.0; // Réinitialiser le timer
-    if Game.MusicPlaying then
-    begin
-      StopMusicStream(Game.Music); // Arrêter la musique à la fin du splash screen
-      Game.MusicPlaying := False;
-      AddMessage('Musique arrêtée à la fin de l''écran de démarrage');
-    end;
+    Game.CurrentState := gsMainMenu;
+    Game.SplashScreenTimer := 0.0;
     AddMessage('Passage au menu principal');
   end;
 end;
@@ -1270,16 +1301,28 @@ begin
     AddMessage('Quitter le jeu');
   end;
 
-  buttonY := buttonY + buttonHeight + 10;
-  if GuiButton(RectangleCreate(10, buttonY, buttonWidth, buttonHeight), 'Reprendre la musique') = 1 then
-  begin
-    if not Game.MusicPlaying then
+ buttonY := buttonY + buttonHeight + 10;
+  // Bouton pour gérer la musique
+  if Game.MusicPlaying then
+      musicButtonText := 'Couper la musique'
+    else
+      musicButtonText := 'Reprendre la musique';
+    if GuiButton(RectangleCreate(10, buttonY, buttonWidth, buttonHeight), PChar(musicButtonText)) > 0 then  begin
+    if Game.MusicPlaying then
     begin
+      PauseMusicStream(Game.Music);
+      Game.MusicPlaying := False;
+      AddMessage('Musique mise en pause');
+    end
+    else
+    begin
+      ResumeMusicStream(Game.Music);
       PlayMusicStream(Game.Music);
       Game.MusicPlaying := True;
       AddMessage('Musique reprise');
     end;
   end;
+
 
   buttonY := buttonY + buttonHeight + 10;
 
@@ -1332,17 +1375,14 @@ begin
     DoNothing; // Désactiver pour l'instant
   end;
 
-  if GuiButton(RectangleCreate(10, 230, 180, 30), 'Quitter') <> 0 then
-  begin
-    Game.Aquitter := True;
-  end;
+
 
   // Bouton pour couper/reprendre la musique dans le menu
   if Game.MusicPlaying then
     musicButtonText := 'Couper la musique'
   else
     musicButtonText := 'Reprendre la musique';
-  if GuiButton(RectangleCreate(10, 270, 180, 30), PChar(musicButtonText)) > 0 then
+  if GuiButton(RectangleCreate(10, 230, 180, 30), PChar(musicButtonText)) > 0 then
   begin
     if Game.MusicPlaying then
     begin
@@ -1354,6 +1394,11 @@ begin
       PlayMusicStream(Game.Music);
       Game.MusicPlaying := True;
     end;
+  end;
+
+   if GuiButton(RectangleCreate(10, 270, 180, 30), 'Quitter') <> 0 then
+  begin
+    Game.Aquitter := True;
   end;
 
   // Bouton "Retour" : Afficher uniquement si on ne vient pas de gsSplashScreen ou gsInitialization
@@ -1386,12 +1431,13 @@ begin
   begin
     if Game.MusicPlaying then
     begin
-      StopMusicStream(Game.Music);
+      PauseMusicStream(Game.Music);
       Game.MusicPlaying := False;
-      AddMessage('Musique arrêtée');
+      AddMessage('Musique mise en pause');
     end
     else
     begin
+      ResumeMusicStream(Game.Music);
       PlayMusicStream(Game.Music);
       Game.MusicPlaying := True;
       AddMessage('Musique reprise');
@@ -1416,7 +1462,7 @@ begin
     Game.DefenderUnitsPlaced := False;
 
     // Passer au placement des troupes de l'attaquant
-    Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
+    Game.PreviousState := Game.CurrentState;
     Game.CurrentState := gsSetupAttacker;
     AddMessage('Nouvelle partie commencée, passage au placement des attaquants');
   end;
@@ -1687,6 +1733,9 @@ begin
     CenterUnitOnHexagon(65, 462); // milicien
     CenterUnitOnHexagon(66, 496); // milicien
     CenterUnitOnHexagon(67, 96);  // bateau
+    Game.Units[67].HexagoneDepart := 96; // Définir l'hexagone de départ
+    Game.Units[67].IsLoaded := True; // Bateau chargé au départ
+    Game.DefenderUnitsPlaced := True;
 
     Game.DefenderUnitsPlaced := True;
     AddMessage('Unités défenseurs positionnées automatiquement');
@@ -1842,9 +1891,7 @@ function DisplayHexAndUnitsInfo(hexID: Integer; startY: Integer): Integer;
 var
   k, j: Integer;
   objText: string;
-  unitsOnHex: array[1..2] of Integer; // Pour stocker les ID des unités (max 2 unités)
   unitCount: Integer;
-  unitIndex: Integer;
   yPos: Integer;
   unitState: string;
 begin
@@ -2047,7 +2094,7 @@ end;
 procedure DrawWallsTemporary;
 var
   i: Integer;
-  vertices: array[0..5] of TVector2;
+
 begin
   // Parcourir tous les hexagones
   for i := 1 to HexagonCount do
@@ -2067,8 +2114,6 @@ end;
   end;
 
 
-
-
  procedure InitializeGameManager;
  var
    i: Integer;
@@ -2084,9 +2129,14 @@ end;
    Game.Attacker.PlayerType := ptHuman; // Par défaut
    Game.Attacker.SetupType := stManual; // Par défaut : mode manuel
    Game.Attacker.IsAttacker := True;
-   Game.Defender.PlayerType := ptHuman; // Par défaut
+   Game.Attacker.Ravitaillement := 0.0; // Pas de ravitaillement pour l'attaquant
+   Game.Attacker.BoatCount := 0; // Aucun bateau initial
+
+  Game.Defender.PlayerType := ptHuman; // Par défaut
    Game.Defender.SetupType := stRandom; // Par défaut
    Game.Defender.IsAttacker := False;
+   Game.Defender.Ravitaillement := 100.0; // 100 points pour le défenseur
+  Game.Defender.BoatCount := 1; // Bateau initial (unité 67)
 
    // Initialiser les variables des sliders
    Game.AttackerType := 0;  // 0 = Humain
@@ -2096,6 +2146,7 @@ end;
 
    // Initialiser le tour
    Game.CurrentTurn := 0;
+   Game.PlayerTurnProcessed := False; // Initialiser le drapeau pour frame
 
    // Initialiser le drapeau de positionnement
    Game.AttackerUnitsPlaced := False;
@@ -2167,6 +2218,12 @@ end;
 
  procedure UpdateGameManager;
 begin
+  // Mettre à jour la musique pour toutes les phases sauf gsInitialization
+  if Game.CurrentState <> gsInitialization then
+  begin
+    if Game.MusicPlaying then
+      UpdateMusicStream(Game.Music);
+  end;
   case Game.CurrentState of
     gsInitialization: HandleInitializationUpdate;
     gsSplashScreen: HandleSplashScreenUpdate;
@@ -2217,7 +2274,11 @@ procedure CleanupGameManager;
 begin
   // Libérer les ressources
   UnloadTexture(Game.SplashScreenImage);
-  UnloadMusicStream(Game.Music);
+  if Game.Music.ctxData <> nil then
+  begin
+    StopMusicStream(Game.Music);
+    UnloadMusicStream(Game.Music);
+  end;
   CloseAudioDevice();
 end;
  begin

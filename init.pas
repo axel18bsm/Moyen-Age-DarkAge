@@ -90,13 +90,17 @@ end;
     HasMoveOrder: Boolean;
     CurrentPathIndex: Integer;  // Index actuel dans le tableau chemin
     tourMouvementTermine: Boolean; // Indique si l'unité a terminé son mouvement pour le tour
+    HexagoneDepart: Integer; // Hexagone de départ pour les bateaux (96 ou 192)
+    IsLoaded: Boolean; // Indique si le bateau est chargé
   end;
   TPlayer = record
     PlayerType: TPlayerType; // Humain ou IA
     SetupType: TSetupType;   // Random ou Manuel
     IsAttacker: Boolean;     // True si c'est l'attaquant
-    // Units: array of TUnit; // Liste des unités du joueur (supprimé)
+    Ravitaillement: Single; // Stock de ravitaillement
+    BoatCount: Integer; // Nombre de bateaux actifs sur la mer
   end;
+
 
   TGameState = (
   gsInitialization,
@@ -172,6 +176,7 @@ end;
     LastClickedHexID: Integer; // Dernier hexagone cliqué (pour l'affichage dans le GUI droit)
     LastDestinationHexID: Integer; // Hexagone de destination (pour l'affichage dans le GUI droit)
     CurrentUnitIndex: Integer; // Index de l'unité actuellement en cours de traitement dans le cycle
+    PlayerTurnProcessed: Boolean; // Indique si les traitements du tour ont été effectués
   end;
 
   // Type pour représenter un hexagone
@@ -441,6 +446,11 @@ begin
       Game.Units[unitCount].positionInitiale := Vector2Create(0, 0);
       Game.Units[unitCount].positionFinale := Vector2Create(0, 0);
 
+      if unitCount in [67, 68] then
+      begin
+        Game.Units[unitCount].HexagoneDepart := -1; // Sera défini lors du placement
+        Game.Units[unitCount].IsLoaded := True; // Chargé par défaut
+      end;
 
       // Charger les images
       if Game.Units[unitCount].numplayer = 1 then
