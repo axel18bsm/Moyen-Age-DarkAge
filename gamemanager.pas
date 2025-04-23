@@ -439,8 +439,108 @@ begin
   HandleCommonInput(2, False);
 end;
 procedure HandleDefenderBattleOrdersUpdate;
+var
+  mousePos: TVector2;
+  unitIndex: Integer;
+  i: Integer;
+  alreadyAttacker: Boolean;
 begin
+  // Ajouter HandleCommonInput pour gérer les interactions de base
   HandleCommonInput(2, False);
+
+  // Transformer les coordonnées de la souris dans l'espace du monde
+  mousePos := GetScreenToWorld2D(GetMousePosition(), camera);
+
+  // Débogage : Afficher les coordonnées de la souris
+  AddMessage('MousePos : x=' + FloatToStr(mousePos.x) + ', y=' + FloatToStr(mousePos.y));
+
+  // Clic droit : Sélectionner une unité attaquante comme cible (joueur 1)
+  if IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) then
+  begin
+    for unitIndex := 1 to MAX_UNITS do
+    begin
+      if Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1) then
+      begin
+        // Débogage : Afficher les coordonnées de BtnPerim
+        AddMessage('Unité ' + IntToStr(unitIndex) + ': BtnPerim.x=' + FloatToStr(Game.Units[unitIndex].BtnPerim.x) +
+          ', y=' + FloatToStr(Game.Units[unitIndex].BtnPerim.y) +
+          ', w=' + FloatToStr(Game.Units[unitIndex].BtnPerim.width) +
+          ', h=' + FloatToStr(Game.Units[unitIndex].BtnPerim.height));
+
+        if CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
+        begin
+          // Vérifier que l'unité appartient au joueur 1 (attaquant) et n'a pas été attaquée
+          if (Game.Units[unitIndex].numplayer = 1) and (not Game.Units[unitIndex].IsAttacked) then
+          begin
+            if Length(Game.CombatOrders) = 0 then
+              SetLength(Game.CombatOrders, 1);
+            Game.CombatOrders[0].TargetID := unitIndex;
+            AddMessage('Unité cible ' + IntToStr(unitIndex) + ' sélectionnée');
+            // Débogage : Confirmer l'état de Game.CombatOrders
+            AddMessage('Game.CombatOrders après clic droit : Length=' + IntToStr(Length(Game.CombatOrders)) +
+              ', TargetID=' + IntToStr(Game.CombatOrders[0].TargetID));
+            Break;
+          end
+          else
+          begin
+            AddMessage('Unité ' + IntToStr(unitIndex) + ' non sélectionnée : numplayer=' + IntToStr(Game.Units[unitIndex].numplayer) +
+              ', IsAttacked=' + BoolToStr(Game.Units[unitIndex].IsAttacked, True));
+          end;
+        end;
+      end;
+    end;
+  end;
+
+  // Clic gauche : Ajouter une unité défensive comme attaquant (joueur 2)
+  if IsMouseButtonPressed(MOUSE_BUTTON_LEFT) then
+  begin
+    for unitIndex := 1 to MAX_UNITS do
+    begin
+      if Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1) then
+      begin
+        if CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
+        begin
+          // Vérifier que l'unité appartient au joueur 2 (défenseur) et n'a pas attaqué
+          if (Game.Units[unitIndex].numplayer = 2) and (not Game.Units[unitIndex].HasAttacked) then
+          begin
+            // Vérifier qu'une cible est déjà sélectionnée
+            if (Length(Game.CombatOrders) > 0) and (Game.CombatOrders[0].TargetID >= 1) then
+            begin
+              // Vérifier que l'unité n'est pas déjà dans AttackerIDs
+              alreadyAttacker := False;
+              for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+              begin
+                if Game.CombatOrders[0].AttackerIDs[i] = unitIndex then
+                begin
+                  alreadyAttacker := True;
+                  Break;
+                end;
+              end;
+
+              if not alreadyAttacker then
+              begin
+                SetLength(Game.CombatOrders[0].AttackerIDs, Length(Game.CombatOrders[0].AttackerIDs) + 1);
+                Game.CombatOrders[0].AttackerIDs[High(Game.CombatOrders[0].AttackerIDs)] := unitIndex;
+                AddMessage('Unité attaquante ' + IntToStr(unitIndex) + ' ajoutée');
+                // Débogage : Confirmer l'état de Game.CombatOrders
+                AddMessage('Game.CombatOrders après clic gauche : Length(AttackerIDs)=' + IntToStr(Length(Game.CombatOrders[0].AttackerIDs)));
+                Break;
+              end;
+            end
+            else
+            begin
+              AddMessage('Sélectionnez une cible avant d''ajouter un attaquant.');
+            end;
+          end
+          else
+          begin
+            AddMessage('Unité ' + IntToStr(unitIndex) + ' non sélectionnée : numplayer=' + IntToStr(Game.Units[unitIndex].numplayer) +
+              ', HasAttacked=' + BoolToStr(Game.Units[unitIndex].HasAttacked, True));
+          end;
+        end;
+      end;
+    end;
+  end;
 end;
 procedure HandleDefenderMoveExecuteUpdate;
 begin
@@ -468,6 +568,8 @@ var
   i: Integer;
   alreadyAttacker: Boolean;
 begin
+  // Ajouter HandleCommonInput pour gérer les interactions de base
+  HandleCommonInput(1, False);
   // Transformer les coordonnées de la souris dans l'espace du monde
   mousePos := GetScreenToWorld2D(GetMousePosition(), camera);
 
@@ -960,6 +1062,7 @@ var
   suivantButtonY: Integer;
   playerText: string;
   stateDisplayText: string;
+  i: Integer;
 begin
   suivantButtonY := screenHeight - bottomBorderHeight - 70;
 
@@ -1078,6 +1181,35 @@ begin
         AddMessage('Combat validé (placeholder)');
       GuiEnable;
 
+      // Bouton Annuler le combat (désactivé si moins de 2 unités sélectionnées)
+      if (Length(Game.CombatOrders) = 0) or (Length(Game.CombatOrders[0].AttackerIDs) = 0) then
+        GuiDisable;
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY - 60, 230, 30), 'Annuler le combat') = 1 then
+      begin
+        // Réinitialiser la cible et les attaquants
+        if Length(Game.CombatOrders) > 0 then
+        begin
+          // Réinitialiser IsAttacked pour la cible
+          if Game.CombatOrders[0].TargetID >= 1 then
+          begin
+            Game.Units[Game.CombatOrders[0].TargetID].IsAttacked := False;
+            AddMessage('Unité cible ' + IntToStr(Game.CombatOrders[0].TargetID) + ' désélectionnée');
+          end;
+
+          // Réinitialiser HasAttacked pour les attaquants
+          for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+          begin
+            Game.Units[Game.CombatOrders[0].AttackerIDs[i]].HasAttacked := False;
+            AddMessage('Unité attaquante ' + IntToStr(Game.CombatOrders[0].AttackerIDs[i]) + ' désélectionnée');
+          end;
+
+          // Vider Game.CombatOrders
+          SetLength(Game.CombatOrders, 0);
+          AddMessage('Combat annulé');
+        end;
+      end;
+      GuiEnable;
+
       // Bouton Suivant
       if not Game.ShowConfirmDialog then
       begin
@@ -1089,6 +1221,22 @@ begin
         dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin des ordres de combat ?', 'Oui;Non');
         if dialogResult = 1 then
         begin
+          // Réinitialiser toutes les unités (attaquants et défenseurs)
+          for i := 1 to 40 do // Unités 1 à 40 = attaquants
+          begin
+            Game.Units[i].IsAttacked := False;
+            Game.Units[i].HasAttacked := False;
+          end;
+          for i := 41 to 68 do // Unités 41 à 68 = défenseurs
+          begin
+            Game.Units[i].IsAttacked := False;
+            Game.Units[i].HasAttacked := False;
+          end;
+
+          // Vider Game.CombatOrders
+          SetLength(Game.CombatOrders, 0);
+          AddMessage('Ordres de combat réinitialisés pour toutes les unités');
+
           Game.ShowConfirmDialog := False;
           Game.CurrentState := gsCheckVictoryAttacker;
           Game.CurrentPlayer := Game.Attacker;
@@ -1098,9 +1246,10 @@ begin
           Game.ShowConfirmDialog := False;
       end;
 
-      // Bouton Menu
+      // Bouton Menu (avec sauvegarde de l'état)
       if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
       begin
+        Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
         Game.CurrentState := gsMainMenu;
         AddMessage('Retour au menu principal');
       end;
@@ -1131,9 +1280,10 @@ begin
           Game.ShowConfirmDialog := False;
       end;
 
-      // Bouton Menu
+      // Bouton Menu (avec sauvegarde de l'état)
       if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
       begin
+        Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
         Game.CurrentState := gsMainMenu;
         AddMessage('Retour au menu principal');
       end;
@@ -1160,9 +1310,10 @@ begin
           Game.ShowConfirmDialog := False;
       end;
 
-      // Bouton Menu
+      // Bouton Menu (avec sauvegarde de l'état)
       if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
       begin
+        Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
         Game.CurrentState := gsMainMenu;
         AddMessage('Retour au menu principal');
       end;
@@ -1189,9 +1340,10 @@ begin
           Game.ShowConfirmDialog := False;
       end;
 
-      // Bouton Menu
+      // Bouton Menu (avec sauvegarde de l'état)
       if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
       begin
+        Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
         Game.CurrentState := gsMainMenu;
         AddMessage('Retour au menu principal');
       end;
@@ -1207,6 +1359,35 @@ begin
         GuiDisable;
       if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY - 30, 230, 30), 'Combattre') = 1 then
         AddMessage('Combat validé (placeholder)');
+      GuiEnable;
+
+      // Bouton Annuler le combat (désactivé si moins de 2 unités sélectionnées)
+      if (Length(Game.CombatOrders) = 0) or (Length(Game.CombatOrders[0].AttackerIDs) = 0) then
+        GuiDisable;
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY - 60, 230, 30), 'Annuler le combat') = 1 then
+      begin
+        // Réinitialiser la cible et les attaquants
+        if Length(Game.CombatOrders) > 0 then
+        begin
+          // Réinitialiser IsAttacked pour la cible
+          if Game.CombatOrders[0].TargetID >= 1 then
+          begin
+            Game.Units[Game.CombatOrders[0].TargetID].IsAttacked := False;
+            AddMessage('Unité cible ' + IntToStr(Game.CombatOrders[0].TargetID) + ' désélectionnée');
+          end;
+
+          // Réinitialiser HasAttacked pour les attaquants
+          for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+          begin
+            Game.Units[Game.CombatOrders[0].AttackerIDs[i]].HasAttacked := False;
+            AddMessage('Unité attaquante ' + IntToStr(Game.CombatOrders[0].AttackerIDs[i]) + ' désélectionnée');
+          end;
+
+          // Vider Game.CombatOrders
+          SetLength(Game.CombatOrders, 0);
+          AddMessage('Combat annulé');
+        end;
+      end;
       GuiEnable;
 
       // Bouton Suivant
@@ -1229,9 +1410,10 @@ begin
           Game.ShowConfirmDialog := False;
       end;
 
-      // Bouton Menu
+      // Bouton Menu (avec sauvegarde de l'état)
       if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
       begin
+        Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
         Game.CurrentState := gsMainMenu;
         AddMessage('Retour au menu principal');
       end;
@@ -1258,16 +1440,17 @@ begin
           else
           begin
             Game.CurrentState := gsGameOver;
-            AddMessage('Fin du jeu');
+            AddMessage('Les mercenaires n''ont plus d''argent, les attaquants ont perdu');
           end;
         end
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
       end;
 
-      // Bouton Menu
+      // Bouton Menu (avec sauvegarde de l'état)
       if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
       begin
+        Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
         Game.CurrentState := gsMainMenu;
         AddMessage('Retour au menu principal');
       end;
@@ -1282,35 +1465,23 @@ begin
       end
       else
       begin
-        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous le démarrage du nouveau tour ?', 'Oui;Non');
+        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous le passage au tour suivant ?', 'Oui;Non');
         if dialogResult = 1 then
         begin
           Game.ShowConfirmDialog := False;
-          Inc(Game.CurrentTurn);
-          Game.PlayerTurnProcessed := False;
-          if Game.CurrentTurn <= MAX_TOURS then
-          begin
-            Game.CurrentState := gsAttackerMoveOrders;
-            Game.CurrentPlayer := Game.Attacker;
-            if Game.Attacker.PlayerType = ptAI then
-              playerText := 'IA'
-            else
-              playerText := 'Humain';
-            AddMessage('Tour ' + IntToStr(Game.CurrentTurn) + ' - Ordres de mouvement (Attaquant)');
-          end
-          else
-          begin
-            Game.CurrentState := gsGameOver;
-            AddMessage('Les mercenaires n''ont plus d''argent, les attaquants ont perdu');
-          end;
+          Game.CurrentState := gsAttackerMoveOrders;
+          Game.CurrentPlayer := Game.Attacker;
+          Game.PlayerTurnProcessed := False; // Réinitialiser pour le prochain tour
+          AddMessage('Passage au tour suivant - Ordres de mouvement (Attaquant)');
         end
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
       end;
 
-      // Bouton Menu
+      // Bouton Menu (avec sauvegarde de l'état)
       if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
       begin
+        Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
         Game.CurrentState := gsMainMenu;
         AddMessage('Retour au menu principal');
       end;
@@ -1338,7 +1509,7 @@ begin
   begin
     if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, screenHeight - bottomBorderHeight - 40, 230, 30), 'Menu') = 1 then
     begin
-      Game.PreviousState := Game.CurrentState;
+      Game.PreviousState := Game.CurrentState; // Sauvegarder l'état actuel
       Game.CurrentState := gsMainMenu;
       AddMessage('Menu principal : Sélectionnez une option');
     end;
