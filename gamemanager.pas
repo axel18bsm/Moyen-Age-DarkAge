@@ -5,7 +5,7 @@ unit GameManager;
 interface
 
 uses
-  Classes, SysUtils, raylib, raygui, init,math, TypInfo, UnitProcFunc;
+  Classes, SysUtils, raylib, raygui, init, TypInfo, UnitProcFunc,Math;
 
 // Procédures pour gérer le GameManager
 procedure InitializeGameManager;
@@ -20,7 +20,7 @@ procedure CleanupUnits;
 procedure DrawCastleTemporary;
 procedure DrawUnits;
 procedure DoNothing;
-function DisplayHexAndUnitsInfo(hexID: Integer; startY: Integer): Integer;
+function DisplayHexAndUnitsInfo(hexID: Integer; var yPos: Integer): Integer;
 procedure AddMessage(msg: string);
 procedure HandleInitializationUpdate;
 procedure HandleInitializationDraw;
@@ -38,8 +38,8 @@ procedure HandleGameOverUpdate;
 procedure HandleGameOverDraw;
 procedure HandleNotImplementedDraw; // Pour les états non implémentés
 procedure DrawMouseCoordinates;
-procedure DrawGeneralInfo;
-procedure DrawHexAndUnitsInfo;
+function DrawGeneralInfo(var yPos: Integer): Integer;
+procedure DrawHexAndUnitsInfo(var yPos: Integer);
 procedure DrawButtons(depart: TGameState);
 procedure DrawMessagePanel;
 procedure HandleMoveOrders(numplayer: Integer); // Fonction commune
@@ -396,32 +396,30 @@ var
 begin
   HandleCommonInput(0, False);
 
-  // Traiter les actions du tour une seule fois
   if not Game.PlayerTurnProcessed then
   begin
     AddMessage('Début tour ' + IntToStr(Game.CurrentTurn) + ', BoatCount défenseur=' + IntToStr(Game.Defender.BoatCount) + ', attaquant=' + IntToStr(Game.Attacker.BoatCount));
 
-    // Ajouter des bateaux si possible
     if Game.CurrentTurn >= 1 then
-      AddBoat(2, Game.CurrentTurn); // Défenseur
+      AddBoat(2, Game.CurrentTurn);
     if Game.CurrentTurn >= 3 then
-      AddBoat(1, Game.CurrentTurn); // Attaquant
+      AddBoat(1, Game.CurrentTurn);
 
-    // Gérer le ravitaillement
     HandleRavitaillement;
-
-    // Gérer le retour des bateaux pour l'IA ou mode automatique
     OrderBoatReturn;
 
-    // Réinitialiser les champs de mouvement
     for unitIndex := 1 to 68 do
     begin
       Game.Units[unitIndex].distanceMaxi := Game.Units[unitIndex].vitesseInitiale;
       Game.Units[unitIndex].tourMouvementTermine := False;
       Game.Units[unitIndex].hasStopped := False;
+      Game.Units[unitIndex].IsAttacked := False;
+      Game.Units[unitIndex].HasAttacked := False;
     end;
 
-    Game.PlayerTurnProcessed := True; // Marquer le tour comme traité
+    SetLength(Game.CombatOrders, 0);
+
+    Game.PlayerTurnProcessed := True;
     AddMessage('Traitements gsplayerturn effectués pour le tour ' + IntToStr(Game.CurrentTurn));
   end;
 end;
@@ -464,9 +462,102 @@ begin
   HandleCommonInput(1, False);
 end;
 procedure HandleAttackerBattleOrdersUpdate;
+var
+  mousePos: TVector2;
+  unitIndex: Integer;
+  i: Integer;
+  alreadyAttacker: Boolean;
 begin
-  HandleCommonInput(1, False);
+  // Transformer les coordonnées de la souris dans l'espace du monde
+  mousePos := GetScreenToWorld2D(GetMousePosition(), camera);
+
+  // Débogage : Afficher les coordonnées de la souris
+  AddMessage('MousePos : x=' + FloatToStr(mousePos.x) + ', y=' + FloatToStr(mousePos.y));
+
+  // Clic droit : Sélectionner une unité défensive comme cible
+  if IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) then
+  begin
+    for unitIndex := 1 to MAX_UNITS do
+    begin
+      if Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1) then
+      begin
+        // Débogage : Afficher les coordonnées de BtnPerim
+        AddMessage('Unité ' + IntToStr(unitIndex) + ': BtnPerim.x=' + FloatToStr(Game.Units[unitIndex].BtnPerim.x) +
+          ', y=' + FloatToStr(Game.Units[unitIndex].BtnPerim.y) +
+          ', w=' + FloatToStr(Game.Units[unitIndex].BtnPerim.width) +
+          ', h=' + FloatToStr(Game.Units[unitIndex].BtnPerim.height));
+
+        if CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
+        begin
+          // Vérifier que l'unité appartient au joueur 2 (défenseur) et n'a pas été attaquée
+          if (Game.Units[unitIndex].numplayer = 2) and (not Game.Units[unitIndex].IsAttacked) then
+          begin
+            if Length(Game.CombatOrders) = 0 then
+              SetLength(Game.CombatOrders, 1);
+            Game.CombatOrders[0].TargetID := unitIndex;
+            AddMessage('Unité cible ' + IntToStr(unitIndex) + ' sélectionnée');
+            Break;
+          end
+          else
+          begin
+            AddMessage('Unité ' + IntToStr(unitIndex) + ' non sélectionnée : numplayer=' + IntToStr(Game.Units[unitIndex].numplayer) +
+              ', IsAttacked=' + BoolToStr(Game.Units[unitIndex].IsAttacked, True));
+          end;
+        end;
+      end;
+    end;
+  end;
+
+  // Clic gauche : Ajouter une unité attaquante (joueur 1)
+  if IsMouseButtonPressed(MOUSE_BUTTON_LEFT) then
+  begin
+    for unitIndex := 1 to MAX_UNITS do
+    begin
+      if Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1) then
+      begin
+        if CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
+        begin
+          // Vérifier que l'unité appartient au joueur 1 (attaquant) et n'a pas attaqué
+          if (Game.Units[unitIndex].numplayer = 1) and (not Game.Units[unitIndex].HasAttacked) then
+          begin
+            // Vérifier qu'une cible est déjà sélectionnée
+            if (Length(Game.CombatOrders) > 0) and (Game.CombatOrders[0].TargetID >= 1) then
+            begin
+              // Vérifier que l'unité n'est pas déjà dans AttackerIDs
+              alreadyAttacker := False;
+              for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+              begin
+                if Game.CombatOrders[0].AttackerIDs[i] = unitIndex then
+                begin
+                  alreadyAttacker := True;
+                  Break;
+                end;
+              end;
+
+              if not alreadyAttacker then
+              begin
+                SetLength(Game.CombatOrders[0].AttackerIDs, Length(Game.CombatOrders[0].AttackerIDs) + 1);
+                Game.CombatOrders[0].AttackerIDs[High(Game.CombatOrders[0].AttackerIDs)] := unitIndex;
+                AddMessage('Unité attaquante ' + IntToStr(unitIndex) + ' ajoutée');
+                Break;
+              end;
+            end
+            else
+            begin
+              AddMessage('Sélectionnez une cible avant d''ajouter un attaquant.');
+            end;
+          end
+          else
+          begin
+            AddMessage('Unité ' + IntToStr(unitIndex) + ' non sélectionnée : numplayer=' + IntToStr(Game.Units[unitIndex].numplayer) +
+              ', HasAttacked=' + BoolToStr(Game.Units[unitIndex].HasAttacked, True));
+          end;
+        end;
+      end;
+    end;
+  end;
 end;
+
 procedure HandleAttackerMoveExecuteUpdate;
 begin
   HandleCommonInput(1, False);
@@ -715,17 +806,28 @@ begin
 end;
 
 // Affiche les informations générales (titre, tour, joueur, état)
-procedure DrawGeneralInfo;
+function DrawGeneralInfo(var yPos: Integer): Integer;
 var
   playerText: string;
   stateText: string;
   stateDisplayText: string;
   tourText: string;
+  i: Integer;
+  forceDefender, forceAttacker: Single;
+  unitStatus: string;
 begin
+  // Débogage : Afficher l'état de Game.CombatOrders avant l'affichage
+  AddMessage('DrawGeneralInfo : Length(Game.CombatOrders)=' + IntToStr(Length(Game.CombatOrders)));
+  if Length(Game.CombatOrders) > 0 then
+    AddMessage('TargetID=' + IntToStr(Game.CombatOrders[0].TargetID) +
+      ', Length(AttackerIDs)=' + IntToStr(Length(Game.CombatOrders[0].AttackerIDs)));
+
   GuiPanel(RectangleCreate(screenWidth - rightBorderWidth, 0, rightBorderWidth, screenHeight), 'Informations');
-  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + (rightBorderWidth - 100) div 2, 20, 100, 20), 'Moyen Age');
+  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + (rightBorderWidth - 100) div 2, yPos, 100, 20), 'Moyen Age');
+  yPos := yPos + 20;
   tourText := Format('N° Tour : %d/%d', [Game.CurrentTurn, MAX_TOURS]);
-  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 40, 230, 20), PChar(tourText));
+  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(tourText));
+  yPos := yPos + 20;
 
   if Game.CurrentPlayer.IsAttacker then
   begin
@@ -743,7 +845,8 @@ begin
     else
       playerText := playerText + ' - Humain';
   end;
-  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 60, 230, 20), PChar('Joueur : ' + playerText));
+  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar('Joueur : ' + playerText));
+  yPos := yPos + 20;
 
   stateText := GetEnumName(TypeInfo(TGameState), Ord(Game.CurrentState));
   case Game.CurrentState of
@@ -752,47 +855,101 @@ begin
     gsAttackerMoveOrders: stateDisplayText := 'Ordres de mouvement (Attaquant)';
     gsAttackerMoveExecute: stateDisplayText := 'Exécution des mouvements (Attaquant)';
     gsAttackerBattleOrders: stateDisplayText := 'Ordres de combat (Attaquant)';
-    gsAttackerBattleExecute: stateDisplayText := 'Exécution des combats (Attaquant)';
-    gsCheckVictoryAttacker: stateDisplayText := 'Vérification victoire (Attaquant)';
     gsDefenderMoveOrders: stateDisplayText := 'Ordres de mouvement (Défenseur)';
     gsDefenderMoveExecute: stateDisplayText := 'Exécution des mouvements (Défenseur)';
     gsDefenderBattleOrders: stateDisplayText := 'Ordres de combat (Défenseur)';
-    gsDefenderBattleExecute: stateDisplayText := 'Exécution des combats (Défenseur)';
+    gsCheckVictoryAttacker: stateDisplayText := 'Vérification victoire (Attaquant)';
     gsCheckVictoryDefender: stateDisplayText := 'Vérification victoire (Défenseur)';
     gsplayerturn: stateDisplayText := 'Tour du joueur';
     gsGameOver: stateDisplayText := 'Fin du jeu';
     else stateDisplayText := stateText;
   end;
-  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 80, 230, 20), PChar('État : ' + stateDisplayText));
+  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar('État : ' + stateDisplayText));
+  yPos := yPos + 20;
 
-  // Afficher le ravitaillement pour le défenseur
-  if not Game.CurrentPlayer.IsAttacker then
-    GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, 100, 230, 20), PChar(Format('Ravitaillement : %.1f', [Game.Defender.Ravitaillement])));
-end;
-
-// Affiche les informations de l'hexagone sélectionné et des unités
-procedure DrawHexAndUnitsInfo;
-var
-  yPos: Integer;
-  unitCount: Integer;
-begin
-  yPos := 120; // Position Y de départ pour les informations de l'hexagone
-  unitCount := DisplayHexAndUnitsInfo(clickedHexID, yPos);
-
-  // Ajuster yPos après l'affichage des informations
-  yPos := yPos + 160; // 7 lignes (hexagone) + 20 (espacement)
-  if unitCount > 0 then
+  if Game.CurrentState in [gsAttackerBattleOrders, gsDefenderBattleOrders] then
   begin
-    yPos := yPos + 20; // Espacement initial
-    yPos := yPos + unitCount * 110; // 4 lignes par unité + 30 (espacement entre unités)
+    // Calculer les forces totales
+    forceDefender := 0.0;
+    forceAttacker := 0.0;
+    if Length(Game.CombatOrders) > 0 then
+    begin
+      if Game.CombatOrders[0].TargetID >= 1 then
+        forceDefender := Game.Units[Game.CombatOrders[0].TargetID].Force;
+      for i := 0 to Min(9, High(Game.CombatOrders[0].AttackerIDs)) do
+        forceAttacker := forceAttacker + Game.Units[Game.CombatOrders[0].AttackerIDs[i]].Force;
+    end;
+
+    // Afficher les informations de combat
+    if Game.CurrentState = gsDefenderBattleOrders then
+    begin
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Ravitaillement : %.1f', [Game.Defender.Ravitaillement])));
+      yPos := yPos + 20;
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Force totale défenseur : %.0f', [forceDefender])));
+      yPos := yPos + 20;
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Force totale attaquante : %.0f', [forceAttacker])));
+      yPos := yPos + 20;
+    end
+    else
+    begin
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Force totale défenseur : %.0f', [forceDefender])));
+      yPos := yPos + 20;
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Force totale attaquante : %.0f', [forceAttacker])));
+      yPos := yPos + 20;
+    end;
+
+    // Afficher la section Cible
+    GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), 'Cible :');
+    yPos := yPos + 20;
+    if Length(Game.CombatOrders) > 0 then
+    begin
+      if Game.CombatOrders[0].TargetID >= 1 then
+      begin
+        unitStatus := GetUnitStatus(Game.CombatOrders[0].TargetID);
+        GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20),
+          PChar(Format('ID : %d - %d - %s', [Game.CombatOrders[0].TargetID, Game.Units[Game.CombatOrders[0].TargetID].Force, unitStatus])));
+        yPos := yPos + 20;
+      end;
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), 'Attaquant :');
+      yPos := yPos + 20;
+      for i := 0 to Min(9, High(Game.CombatOrders[0].AttackerIDs)) do
+      begin
+        unitStatus := GetUnitStatus(Game.CombatOrders[0].AttackerIDs[i]);
+        GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20),
+          PChar(Format('ID : %d - %d - %s', [Game.CombatOrders[0].AttackerIDs[i], Game.Units[Game.CombatOrders[0].AttackerIDs[i]].Force, unitStatus])));
+        yPos := yPos + 15;
+      end;
+    end
+    else
+    begin
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), 'Aucune cible sélectionnée');
+      yPos := yPos + 20;
+    end;
   end
   else
   begin
-    yPos := yPos + 40; // Espacement pour "Aucune unité"
+    // Affichage standard pour les autres phases
+    if not Game.CurrentPlayer.IsAttacker then
+    begin
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Ravitaillement : %.1f', [Game.Defender.Ravitaillement])));
+      yPos := yPos + 20;
+    end;
   end;
 
-  // Stocker yPos dans une variable globale ou un champ de GameManager si nécessaire
-  Game.LastYPos := yPos; // Ajouter un champ LastYPos à TGameManager si besoin
+  // Ajouter un espace après les informations générales
+  yPos := yPos + 10;
+
+  Result := yPos; // Retourner la nouvelle position yPos
+end;
+
+// Affiche les informations de l'hexagone sélectionné et des unités
+procedure DrawHexAndUnitsInfo(var yPos: Integer);
+var
+  unitCount: Integer;
+begin
+  unitCount := DisplayHexAndUnitsInfo(clickedHexID, yPos);
+  // Mettre à jour Game.LastYPos si nécessaire
+  Game.LastYPos := yPos;
 end;
 
 // Affiche les boutons (Suivant, Passer le tour, Menu) et gère la boîte de dialogue
@@ -802,7 +959,7 @@ var
   dialogResult: Integer;
   suivantButtonY: Integer;
   playerText: string;
-  musicButtonText:String;
+  stateDisplayText: string;
 begin
   suivantButtonY := screenHeight - bottomBorderHeight - 70;
 
@@ -911,6 +1068,17 @@ begin
 
     gsAttackerBattleOrders:
     begin
+      // Débogage pour confirmer l'entrée dans la phase
+      AddMessage('Phase gsAttackerBattleOrders : Affichage des boutons');
+
+      // Bouton Combattre (désactivé si moins de 2 unités sélectionnées)
+      if (Length(Game.CombatOrders) = 0) or (Length(Game.CombatOrders[0].AttackerIDs) = 0) then
+        GuiDisable;
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY - 30, 230, 30), 'Combattre') = 1 then
+        AddMessage('Combat validé (placeholder)');
+      GuiEnable;
+
+      // Bouton Suivant
       if not Game.ShowConfirmDialog then
       begin
         if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
@@ -922,34 +1090,19 @@ begin
         if dialogResult = 1 then
         begin
           Game.ShowConfirmDialog := False;
-          Game.CurrentState := gsAttackerBattleExecute;
-          Game.CurrentPlayer := Game.Attacker;
-          AddMessage('Exécution des combats (Attaquant)');
-        end
-        else if dialogResult = 2 then
-          Game.ShowConfirmDialog := False;
-      end;
-    end;
-
-    gsAttackerBattleExecute:
-    begin
-      if not Game.ShowConfirmDialog then
-      begin
-        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
-          Game.ShowConfirmDialog := True;
-      end
-      else
-      begin
-        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin de l''exécution des combats ?', 'Oui;Non');
-        if dialogResult = 1 then
-        begin
-          Game.ShowConfirmDialog := False;
           Game.CurrentState := gsCheckVictoryAttacker;
           Game.CurrentPlayer := Game.Attacker;
           AddMessage('Vérification victoire (Attaquant)');
         end
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
+      end;
+
+      // Bouton Menu
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
+      begin
+        Game.CurrentState := gsMainMenu;
+        AddMessage('Retour au menu principal');
       end;
     end;
 
@@ -977,6 +1130,13 @@ begin
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
       end;
+
+      // Bouton Menu
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
+      begin
+        Game.CurrentState := gsMainMenu;
+        AddMessage('Retour au menu principal');
+      end;
     end;
 
     gsDefenderMoveOrders:
@@ -998,6 +1158,13 @@ begin
         end
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
+      end;
+
+      // Bouton Menu
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
+      begin
+        Game.CurrentState := gsMainMenu;
+        AddMessage('Retour au menu principal');
       end;
     end;
 
@@ -1021,10 +1188,28 @@ begin
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
       end;
+
+      // Bouton Menu
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
+      begin
+        Game.CurrentState := gsMainMenu;
+        AddMessage('Retour au menu principal');
+      end;
     end;
 
     gsDefenderBattleOrders:
     begin
+      // Débogage pour confirmer l'entrée dans la phase
+      AddMessage('Phase gsDefenderBattleOrders : Affichage des boutons');
+
+      // Bouton Combattre (désactivé si moins de 2 unités sélectionnées)
+      if (Length(Game.CombatOrders) = 0) or (Length(Game.CombatOrders[0].AttackerIDs) = 0) then
+        GuiDisable;
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY - 30, 230, 30), 'Combattre') = 1 then
+        AddMessage('Combat validé (placeholder)');
+      GuiEnable;
+
+      // Bouton Suivant
       if not Game.ShowConfirmDialog then
       begin
         if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
@@ -1036,34 +1221,19 @@ begin
         if dialogResult = 1 then
         begin
           Game.ShowConfirmDialog := False;
-          Game.CurrentState := gsDefenderBattleExecute;
-          Game.CurrentPlayer := Game.Defender;
-          AddMessage('Exécution des combats (Défenseur)');
-        end
-        else if dialogResult = 2 then
-          Game.ShowConfirmDialog := False;
-      end;
-    end;
-
-    gsDefenderBattleExecute:
-    begin
-      if not Game.ShowConfirmDialog then
-      begin
-        if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Suivant') = 1 then
-          Game.ShowConfirmDialog := True;
-      end
-      else
-      begin
-        dialogResult := GuiMessageBox(RectangleCreate(screenWidth div 2 - 150, screenHeight div 2 - 75, 300, 150), 'Confirmation', 'Confirmez-vous la fin de l''exécution des combats ?', 'Oui;Non');
-        if dialogResult = 1 then
-        begin
-          Game.ShowConfirmDialog := False;
           Game.CurrentState := gsCheckVictoryDefender;
           Game.CurrentPlayer := Game.Defender;
           AddMessage('Vérification victoire (Défenseur)');
         end
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
+      end;
+
+      // Bouton Menu
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
+      begin
+        Game.CurrentState := gsMainMenu;
+        AddMessage('Retour au menu principal');
       end;
     end;
 
@@ -1083,6 +1253,7 @@ begin
           if Game.CurrentTurn < MAX_TOURS then
           begin
             Game.CurrentState := gsplayerturn;
+            AddMessage('Tour du joueur');
           end
           else
           begin
@@ -1092,6 +1263,13 @@ begin
         end
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
+      end;
+
+      // Bouton Menu
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
+      begin
+        Game.CurrentState := gsMainMenu;
+        AddMessage('Retour au menu principal');
       end;
     end;
 
@@ -1109,7 +1287,7 @@ begin
         begin
           Game.ShowConfirmDialog := False;
           Inc(Game.CurrentTurn);
-          Game.PlayerTurnProcessed := False; // Réinitialiser pour le tour suivant
+          Game.PlayerTurnProcessed := False;
           if Game.CurrentTurn <= MAX_TOURS then
           begin
             Game.CurrentState := gsAttackerMoveOrders;
@@ -1129,12 +1307,36 @@ begin
         else if dialogResult = 2 then
           Game.ShowConfirmDialog := False;
       end;
-      End;
+
+      // Bouton Menu
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
+      begin
+        Game.CurrentState := gsMainMenu;
+        AddMessage('Retour au menu principal');
+      end;
     end;
 
-  if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, screenHeight - bottomBorderHeight - 40, 230, 30), 'Menu') <> 0 then
+    gsGameOver:
+    begin
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY, 230, 30), 'Retour au menu') = 1 then
+      begin
+        Game.CurrentState := gsMainMenu;
+        AddMessage('Retour au menu principal');
+      end;
+
+      // Bouton Menu
+      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, suivantButtonY + 30, 230, 30), 'Menu') = 1 then
+      begin
+        Game.CurrentState := gsMainMenu;
+        AddMessage('Retour au menu principal');
+      end;
+    end;
+  end;
+
+  // Bouton Menu global pour toutes les phases sauf gsMainMenu
+  if Game.CurrentState <> gsMainMenu then
   begin
-    if Game.CurrentState <> gsMainMenu then
+    if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, screenHeight - bottomBorderHeight - 40, 230, 30), 'Menu') = 1 then
     begin
       Game.PreviousState := Game.CurrentState;
       Game.CurrentState := gsMainMenu;
@@ -1182,10 +1384,20 @@ end;
 
 // Nouvelle version simplifiée de AffichageEcranGui
 procedure AffichageEcranGui(depart: TGameState);
+var
+  yPos: Integer;
 begin
+  // Position de départ pour l'affichage
+  yPos := 20;
+
   DrawMouseCoordinates; // Afficher les coordonnées de la souris
-  DrawGeneralInfo; // Afficher les informations générales (titre, tour, joueur, état)
-  DrawHexAndUnitsInfo; // Afficher les informations de l'hexagone et des unités
+
+  // Afficher les informations générales (titre, tour, joueur, état, combats)
+  yPos := DrawGeneralInfo(yPos);
+
+  // Afficher les informations de l'hexagone et des unités
+  DrawHexAndUnitsInfo(yPos);
+
   DrawButtons(depart); // Afficher les boutons et gérer la boîte de dialogue
   DrawMessagePanel; // Afficher le panneau défilant
 end;
@@ -1887,15 +2099,13 @@ begin
   end;
 end;
 
-function DisplayHexAndUnitsInfo(hexID: Integer; startY: Integer): Integer;
+function DisplayHexAndUnitsInfo(hexID: Integer; var yPos: Integer): Integer;
 var
   k, j: Integer;
   objText: string;
   unitCount: Integer;
-  yPos: Integer;
   unitState: string;
 begin
-  yPos := startY;
   unitCount := 0;
 
   // Afficher les informations de l'hexagone cliqué
@@ -2009,6 +2219,9 @@ begin
     end;
   end;
 
+  // Ajouter un espace après les informations de l'hexagone
+  yPos := yPos + 10;
+
   Result := unitCount; // Retourner le nombre d'unités trouvées
 end;
 procedure DoNothing;
@@ -2018,15 +2231,51 @@ end;
 
 procedure DrawUnits;
 var
-  j: Integer;
+  unitIndex, i: Integer;
+  unitRectangle: TRectangle;
 begin
-  for j := 1 to MAX_UNITS do
+  for unitIndex := 1 to MAX_UNITS do
   begin
-    if Game.Units[j].HexagoneActuel >= 0 then
+    if Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1) then
     begin
-      // Centrer l'image de l'unité par rapport à PositionActuelle
-      drawPos := CenterUnitOnPositionActuelle(j);
-      DrawTexture(Game.Units[j].latexture, Round(drawPos.x), Round(drawPos.y), WHITE);
+      // Rendu de l'unité avec centrage
+      DrawTextureV(Game.Units[unitIndex].latexture,
+        Vector2Create(
+          Game.Units[unitIndex].PositionActuelle.x - Game.Units[unitIndex].TextureHalfWidth,
+          Game.Units[unitIndex].PositionActuelle.y - Game.Units[unitIndex].TextureHalfHeight),
+        WHITE);
+
+      // Cadres visuels pour les phases de combat
+      if (Game.CurrentState in [gsAttackerBattleOrders, gsDefenderBattleOrders]) and
+         (Length(Game.CombatOrders) > 0) then
+      begin
+        // Cadre pour la cible (orange)
+        if Game.Units[unitIndex].Id = Game.CombatOrders[0].TargetID then
+        begin
+          unitRectangle := RectangleCreate(
+            Game.Units[unitIndex].PositionActuelle.x - Game.Units[unitIndex].TextureHalfWidth,
+            Game.Units[unitIndex].PositionActuelle.y - Game.Units[unitIndex].TextureHalfHeight,
+            Game.Units[unitIndex].latexture.width,
+            Game.Units[unitIndex].latexture.height
+          );
+          DrawRectangleLinesEx(unitRectangle, 2, ORANGE);
+        end;
+
+        // Cadres pour les attaquants (jaune)
+        for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+        begin
+          if Game.Units[unitIndex].Id = Game.CombatOrders[0].AttackerIDs[i] then
+          begin
+            unitRectangle := RectangleCreate(
+              Game.Units[unitIndex].PositionActuelle.x - Game.Units[unitIndex].TextureHalfWidth,
+              Game.Units[unitIndex].PositionActuelle.y - Game.Units[unitIndex].TextureHalfHeight,
+              Game.Units[unitIndex].latexture.width,
+              Game.Units[unitIndex].latexture.height
+            );
+            DrawRectangleLinesEx(unitRectangle, 2, YELLOW);
+          end;
+        end;
+      end;
     end;
   end;
 end;
@@ -2147,6 +2396,7 @@ end;
    // Initialiser le tour
    Game.CurrentTurn := 0;
    Game.PlayerTurnProcessed := False; // Initialiser le drapeau pour frame
+   SetLength(Game.CombatOrders, 0); // Initialiser les ordres de combat
 
    // Initialiser le drapeau de positionnement
    Game.AttackerUnitsPlaced := False;
@@ -2234,12 +2484,12 @@ begin
     gsAttackerMoveOrders: HandleAttackerMoveOrdersUpdate;
     gsAttackerMoveExecute: HandleAttackerMoveExecuteUpdate;
     gsAttackerBattleOrders: HandleAttackerBattleOrdersUpdate;
-    gsAttackerBattleExecute: HandleAttackerBattleExecuteUpdate;
+    //gsAttackerBattleExecute: HandleAttackerBattleExecuteUpdate;
     gsCheckVictoryAttacker: HandleCheckVictoryAttackerUpdate;
     gsDefenderMoveOrders: HandleDefenderMoveOrdersUpdate;
     gsDefenderMoveExecute: HandleDefenderMoveExecuteUpdate;
     gsDefenderBattleOrders: HandleDefenderBattleOrdersUpdate;
-    gsDefenderBattleExecute: HandleDefenderBattleExecuteUpdate;
+    //gsDefenderBattleExecute: HandleDefenderBattleExecuteUpdate;
     gsCheckVictoryDefender: HandleCheckVictoryDefenderUpdate;
     gsplayerturn: HandlePlayerTurnUpdate;
     gsGameOver: HandleGameOverUpdate;

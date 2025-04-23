@@ -14,7 +14,11 @@ const
   CHEMIN_SOLDAT1='resources/soldat/player1/';
   CHEMIN_SOLDAT2='resources/soldat/player2/';
 
-
+type
+  TCombatOrder = record
+    AttackerIDs: array of Integer; // Liste des ID des unités attaquantes
+    TargetID: Integer; // ID de l'unité cible
+  end;
 type
   TPlayerType = (ptHuman, ptAI); // Type de joueur : Humain ou IA
   TSetupType = (stRandom, stManual); // Type de placement des troupes : Random ou Manuel
@@ -92,6 +96,8 @@ end;
     tourMouvementTermine: Boolean; // Indique si l'unité a terminé son mouvement pour le tour
     HexagoneDepart: Integer; // Hexagone de départ pour les bateaux (96 ou 192)
     IsLoaded: Boolean; // Indique si le bateau est chargé
+    IsAttacked: Boolean; // Indique si l'unité a été attaquée ce tour
+    HasAttacked: Boolean; // Indique si l'unité a attaqué ce tour
   end;
   TPlayer = record
     PlayerType: TPlayerType; // Humain ou IA
@@ -177,6 +183,7 @@ end;
     LastDestinationHexID: Integer; // Hexagone de destination (pour l'affichage dans le GUI droit)
     CurrentUnitIndex: Integer; // Index de l'unité actuellement en cours de traitement dans le cycle
     PlayerTurnProcessed: Boolean; // Indique si les traitements du tour ont été effectués
+    CombatOrders: array of TCombatOrder; // Ordres de combat en cours
   end;
 
   // Type pour représenter un hexagone
@@ -445,6 +452,8 @@ begin
       Game.Units[unitCount].PositionActuelle := Vector2Create(0, 0);
       Game.Units[unitCount].positionInitiale := Vector2Create(0, 0);
       Game.Units[unitCount].positionFinale := Vector2Create(0, 0);
+      Game.Units[unitCount].IsAttacked := False;
+      Game.Units[unitCount].HasAttacked := False;
 
       if unitCount in [67, 68] then
       begin

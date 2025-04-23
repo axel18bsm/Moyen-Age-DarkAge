@@ -26,6 +26,8 @@ function GetStateDisplayText(state: TGameState): string;
 procedure AddBoat(playerNum: Integer; tour: Integer);
 procedure HandleRavitaillement;
 procedure OrderBoatReturn;
+function GetUnitStatus(unitID: Integer): string;
+function CalculateTotalForce(unitIDs: array of Integer): Single;
 
 
 
@@ -33,6 +35,26 @@ procedure OrderBoatReturn;
 
 implementation
 uses GameManager;
+
+function CalculateTotalForce(unitIDs: array of Integer): Single;
+var
+  i: Integer;
+  totalForce: Single;
+begin
+  totalForce := 0.0;
+  for i := 0 to High(unitIDs) do
+    if unitIDs[i] >= 1 then
+      totalForce := totalForce + Game.Units[unitIDs[i]].Force;
+  Result := totalForce;
+end;
+
+function GetUnitStatus(unitID: Integer): string;
+begin
+  if Game.Units[unitID].EtatUnite = 1 then
+    Result := 'Entier'
+  else
+    Result := 'Abimé';
+end;
 procedure AddBoat(playerNum: Integer; tour: Integer);
 var
   hexID, unitID: Integer;
