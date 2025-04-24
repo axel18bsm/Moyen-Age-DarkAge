@@ -60,13 +60,140 @@ procedure HandlePlayerTurnUpdate;
 procedure HandleCommonInput(numplayer: Integer; doMoveOrders: Boolean);
 procedure HandleStateTransition(currentState: TGameState; nextState: TGameState; confirmMessage: string; nextPlayerIsAttacker: Boolean; successMessage: string; condition: Boolean);
 function ExecuteUnitMovement(numplayer: Integer): Boolean;
-
-
-
+procedure HandleBattleOrdersUpdate(numplayer: Integer);
 
 
 
 implementation
+procedure HandleBattleOrdersUpdate(numplayer: Integer);
+var
+  mousePos: TVector2;
+  unitIndex, hexID, i: Integer;
+  alreadyAttacker, isCatapult: Boolean;
+  targetPlayer: Integer;
+begin
+  HandleCommonInput(numplayer, False);
+  mousePos := GetScreenToWorld2D(GetMousePosition(), camera);
+
+  // Déterminer le joueur cible (inversé par rapport à numplayer)
+  targetPlayer := 3 - numplayer;
+
+  // Clic droit : Sélectionner une cible (hexagone et unité si présente)
+  if IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) then
+  begin
+    // Détecter l'hexagone cliqué
+    hexID := GetHexagonAtPosition(mousePos.x, mousePos.y);
+    if hexID < 1 then
+      Exit;
+
+    // Réinitialiser les ordres de combat
+    if Length(Game.CombatOrders) = 0 then
+      SetLength(Game.CombatOrders, 1);
+    Game.CombatOrders[0].TargetHexID := hexID;
+    Game.CombatOrders[0].TargetID := -1; // Par défaut, pas d'unité
+    SetLength(Game.CombatOrders[0].AttackerIDs, 0); // Réinitialiser les attaquants
+
+    // Vérifier si une unité ennemie est présente sur cet hexagone
+    for unitIndex := 1 to MAX_UNITS do
+    begin
+      if not (Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel = hexID)) then
+        Continue;
+      if not (Game.Units[unitIndex].numplayer = targetPlayer) or Game.Units[unitIndex].IsAttacked then
+        Continue;
+
+      Game.CombatOrders[0].TargetID := unitIndex;
+      AddMessage('Unité cible ' + IntToStr(unitIndex) + ' sélectionnée sur hexagone ' + IntToStr(hexID));
+      Exit;
+    end;
+
+    // Si aucune unité n'est présente, afficher un message pour l'hexagone
+    if (Hexagons[hexID].IsCastle) or (Hexagons[hexID].Objet = 3000) then
+      AddMessage('Hexagone cible ' + IntToStr(hexID) + ' sélectionné (mur/grille)')
+    else
+      AddMessage('Hexagone cible ' + IntToStr(hexID) + ' sélectionné');
+    Exit;
+  end;
+
+  // Clic gauche : Ajouter une unité comme attaquant
+  if IsMouseButtonPressed(MOUSE_BUTTON_LEFT) then
+  begin
+    if (Length(Game.CombatOrders) = 0) or (Game.CombatOrders[0].TargetHexID < 1) then
+    begin
+      AddMessage('Sélectionnez une cible avant d''ajouter un attaquant.');
+      Exit;
+    end;
+
+    for unitIndex := 1 to MAX_UNITS do
+    begin
+      if not (Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1)) then
+        Continue;
+      if not CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
+        Continue;
+      if not (Game.Units[unitIndex].numplayer = numplayer) or Game.Units[unitIndex].HasAttacked then
+        Continue;
+
+      // Vérifier si l'attaquant est déjà dans la liste
+      alreadyAttacker := False;
+      for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+        if Game.CombatOrders[0].AttackerIDs[i] = unitIndex then
+        begin
+          alreadyAttacker := True;
+          Break;
+        end;
+      if alreadyAttacker then
+        Continue;
+
+      // Déterminer si l'unité est une catapulte (trébuchet : ID 6, 7, 15, 16)
+      isCatapult := unitIndex in [6, 7, 15, 16];
+
+      // Vérifier la portée
+      if isCatapult then
+      begin
+        // Les trébuchets vérifient la portée par rapport à l'hexagone (mur/grille)
+        if not IsInRangeBFS(Game.Units[unitIndex],
+                            Game.CombatOrders[0].TargetHexID,
+                            Vector2Create(Hexagons[Game.CombatOrders[0].TargetHexID].CenterX,
+                                          Hexagons[Game.CombatOrders[0].TargetHexID].CenterY),
+                            4) then
+        begin
+          AddMessage('Attaquant id ' + IntToStr(unitIndex) + ' hors de portée');
+          Continue;
+        end;
+      end
+      else
+      begin
+        // Les autres unités (cavalerie, archers, infanterie) vérifient la portée par rapport à l'unité cible
+        if Game.CombatOrders[0].TargetID < 1 then
+        begin
+          AddMessage('Aucune unité ennemie à attaquer pour id ' + IntToStr(unitIndex));
+          Continue;
+        end;
+        if not IsInRangeBFS(Game.Units[unitIndex],
+                            Game.Units[Game.CombatOrders[0].TargetID].HexagoneActuel,
+                            Vector2Create(Hexagons[Game.Units[Game.CombatOrders[0].TargetID].HexagoneActuel].CenterX,
+                                          Hexagons[Game.Units[Game.CombatOrders[0].TargetID].HexagoneActuel].CenterY),
+                            4) then
+        begin
+          AddMessage('Attaquant id ' + IntToStr(unitIndex) + ' hors de portée');
+          Continue;
+        end;
+      end;
+
+      // Vérifier la limite de 10 attaquants
+      if Length(Game.CombatOrders[0].AttackerIDs) >= 10 then
+      begin
+        AddMessage('Limite de 10 attaquants atteinte');
+        Exit;
+      end;
+
+      // Ajouter l'attaquant
+      SetLength(Game.CombatOrders[0].AttackerIDs, Length(Game.CombatOrders[0].AttackerIDs) + 1);
+      Game.CombatOrders[0].AttackerIDs[High(Game.CombatOrders[0].AttackerIDs)] := unitIndex;
+      AddMessage('Unité attaquante ' + IntToStr(unitIndex) + ' ajoutée');
+      Exit;
+    end;
+  end;
+end;
 function ExecuteUnitMovement(numplayer: Integer): Boolean;
 var
   i, j, startIndex, endIndex: Integer;
@@ -439,108 +566,9 @@ begin
   HandleCommonInput(2, False);
 end;
 procedure HandleDefenderBattleOrdersUpdate;
-var
-  mousePos: TVector2;
-  unitIndex: Integer;
-  i: Integer;
-  alreadyAttacker: Boolean;
+
 begin
-  // Ajouter HandleCommonInput pour gérer les interactions de base
-  HandleCommonInput(2, False);
-
-  // Transformer les coordonnées de la souris dans l'espace du monde
-  mousePos := GetScreenToWorld2D(GetMousePosition(), camera);
-
-  // Débogage : Afficher les coordonnées de la souris
-  AddMessage('MousePos : x=' + FloatToStr(mousePos.x) + ', y=' + FloatToStr(mousePos.y));
-
-  // Clic droit : Sélectionner une unité attaquante comme cible (joueur 1)
-  if IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) then
-  begin
-    for unitIndex := 1 to MAX_UNITS do
-    begin
-      if Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1) then
-      begin
-        // Débogage : Afficher les coordonnées de BtnPerim
-        AddMessage('Unité ' + IntToStr(unitIndex) + ': BtnPerim.x=' + FloatToStr(Game.Units[unitIndex].BtnPerim.x) +
-          ', y=' + FloatToStr(Game.Units[unitIndex].BtnPerim.y) +
-          ', w=' + FloatToStr(Game.Units[unitIndex].BtnPerim.width) +
-          ', h=' + FloatToStr(Game.Units[unitIndex].BtnPerim.height));
-
-        if CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
-        begin
-          // Vérifier que l'unité appartient au joueur 1 (attaquant) et n'a pas été attaquée
-          if (Game.Units[unitIndex].numplayer = 1) and (not Game.Units[unitIndex].IsAttacked) then
-          begin
-            if Length(Game.CombatOrders) = 0 then
-              SetLength(Game.CombatOrders, 1);
-            Game.CombatOrders[0].TargetID := unitIndex;
-            AddMessage('Unité cible ' + IntToStr(unitIndex) + ' sélectionnée');
-            // Débogage : Confirmer l'état de Game.CombatOrders
-            AddMessage('Game.CombatOrders après clic droit : Length=' + IntToStr(Length(Game.CombatOrders)) +
-              ', TargetID=' + IntToStr(Game.CombatOrders[0].TargetID));
-            Break;
-          end
-          else
-          begin
-            AddMessage('Unité ' + IntToStr(unitIndex) + ' non sélectionnée : numplayer=' + IntToStr(Game.Units[unitIndex].numplayer) +
-              ', IsAttacked=' + BoolToStr(Game.Units[unitIndex].IsAttacked, True));
-          end;
-        end;
-      end;
-    end;
-  end;
-
-  // Clic gauche : Ajouter une unité défensive comme attaquant (joueur 2)
-  if IsMouseButtonPressed(MOUSE_BUTTON_LEFT) then
-  begin
-    for unitIndex := 1 to MAX_UNITS do
-    begin
-      if Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1) then
-      begin
-        if CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
-        begin
-          // Vérifier que l'unité appartient au joueur 2 (défenseur) et n'a pas attaqué
-          if (Game.Units[unitIndex].numplayer = 2) and (not Game.Units[unitIndex].HasAttacked) then
-          begin
-            // Vérifier qu'une cible est déjà sélectionnée
-            if (Length(Game.CombatOrders) > 0) and (Game.CombatOrders[0].TargetID >= 1) then
-            begin
-              // Vérifier que l'unité n'est pas déjà dans AttackerIDs
-              alreadyAttacker := False;
-              for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
-              begin
-                if Game.CombatOrders[0].AttackerIDs[i] = unitIndex then
-                begin
-                  alreadyAttacker := True;
-                  Break;
-                end;
-              end;
-
-              if not alreadyAttacker then
-              begin
-                SetLength(Game.CombatOrders[0].AttackerIDs, Length(Game.CombatOrders[0].AttackerIDs) + 1);
-                Game.CombatOrders[0].AttackerIDs[High(Game.CombatOrders[0].AttackerIDs)] := unitIndex;
-                AddMessage('Unité attaquante ' + IntToStr(unitIndex) + ' ajoutée');
-                // Débogage : Confirmer l'état de Game.CombatOrders
-                AddMessage('Game.CombatOrders après clic gauche : Length(AttackerIDs)=' + IntToStr(Length(Game.CombatOrders[0].AttackerIDs)));
-                Break;
-              end;
-            end
-            else
-            begin
-              AddMessage('Sélectionnez une cible avant d''ajouter un attaquant.');
-            end;
-          end
-          else
-          begin
-            AddMessage('Unité ' + IntToStr(unitIndex) + ' non sélectionnée : numplayer=' + IntToStr(Game.Units[unitIndex].numplayer) +
-              ', HasAttacked=' + BoolToStr(Game.Units[unitIndex].HasAttacked, True));
-          end;
-        end;
-      end;
-    end;
-  end;
+ HandleBattleOrdersUpdate(2); // Défenseurs (joueur 2)
 end;
 procedure HandleDefenderMoveExecuteUpdate;
 begin
@@ -562,102 +590,8 @@ begin
   HandleCommonInput(1, False);
 end;
 procedure HandleAttackerBattleOrdersUpdate;
-var
-  mousePos: TVector2;
-  unitIndex: Integer;
-  i: Integer;
-  alreadyAttacker: Boolean;
 begin
-  // Ajouter HandleCommonInput pour gérer les interactions de base
-  HandleCommonInput(1, False);
-  // Transformer les coordonnées de la souris dans l'espace du monde
-  mousePos := GetScreenToWorld2D(GetMousePosition(), camera);
-
-  // Débogage : Afficher les coordonnées de la souris
-  AddMessage('MousePos : x=' + FloatToStr(mousePos.x) + ', y=' + FloatToStr(mousePos.y));
-
-  // Clic droit : Sélectionner une unité défensive comme cible
-  if IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) then
-  begin
-    for unitIndex := 1 to MAX_UNITS do
-    begin
-      if Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1) then
-      begin
-        // Débogage : Afficher les coordonnées de BtnPerim
-        AddMessage('Unité ' + IntToStr(unitIndex) + ': BtnPerim.x=' + FloatToStr(Game.Units[unitIndex].BtnPerim.x) +
-          ', y=' + FloatToStr(Game.Units[unitIndex].BtnPerim.y) +
-          ', w=' + FloatToStr(Game.Units[unitIndex].BtnPerim.width) +
-          ', h=' + FloatToStr(Game.Units[unitIndex].BtnPerim.height));
-
-        if CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
-        begin
-          // Vérifier que l'unité appartient au joueur 2 (défenseur) et n'a pas été attaquée
-          if (Game.Units[unitIndex].numplayer = 2) and (not Game.Units[unitIndex].IsAttacked) then
-          begin
-            if Length(Game.CombatOrders) = 0 then
-              SetLength(Game.CombatOrders, 1);
-            Game.CombatOrders[0].TargetID := unitIndex;
-            AddMessage('Unité cible ' + IntToStr(unitIndex) + ' sélectionnée');
-            Break;
-          end
-          else
-          begin
-            AddMessage('Unité ' + IntToStr(unitIndex) + ' non sélectionnée : numplayer=' + IntToStr(Game.Units[unitIndex].numplayer) +
-              ', IsAttacked=' + BoolToStr(Game.Units[unitIndex].IsAttacked, True));
-          end;
-        end;
-      end;
-    end;
-  end;
-
-  // Clic gauche : Ajouter une unité attaquante (joueur 1)
-  if IsMouseButtonPressed(MOUSE_BUTTON_LEFT) then
-  begin
-    for unitIndex := 1 to MAX_UNITS do
-    begin
-      if Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1) then
-      begin
-        if CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
-        begin
-          // Vérifier que l'unité appartient au joueur 1 (attaquant) et n'a pas attaqué
-          if (Game.Units[unitIndex].numplayer = 1) and (not Game.Units[unitIndex].HasAttacked) then
-          begin
-            // Vérifier qu'une cible est déjà sélectionnée
-            if (Length(Game.CombatOrders) > 0) and (Game.CombatOrders[0].TargetID >= 1) then
-            begin
-              // Vérifier que l'unité n'est pas déjà dans AttackerIDs
-              alreadyAttacker := False;
-              for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
-              begin
-                if Game.CombatOrders[0].AttackerIDs[i] = unitIndex then
-                begin
-                  alreadyAttacker := True;
-                  Break;
-                end;
-              end;
-
-              if not alreadyAttacker then
-              begin
-                SetLength(Game.CombatOrders[0].AttackerIDs, Length(Game.CombatOrders[0].AttackerIDs) + 1);
-                Game.CombatOrders[0].AttackerIDs[High(Game.CombatOrders[0].AttackerIDs)] := unitIndex;
-                AddMessage('Unité attaquante ' + IntToStr(unitIndex) + ' ajoutée');
-                Break;
-              end;
-            end
-            else
-            begin
-              AddMessage('Sélectionnez une cible avant d''ajouter un attaquant.');
-            end;
-          end
-          else
-          begin
-            AddMessage('Unité ' + IntToStr(unitIndex) + ' non sélectionnée : numplayer=' + IntToStr(Game.Units[unitIndex].numplayer) +
-              ', HasAttacked=' + BoolToStr(Game.Units[unitIndex].HasAttacked, True));
-          end;
-        end;
-      end;
-    end;
-  end;
+ HandleBattleOrdersUpdate(1); // Défenseurs (joueur 2)
 end;
 
 procedure HandleAttackerMoveExecuteUpdate;
@@ -910,31 +844,29 @@ end;
 // Affiche les informations générales (titre, tour, joueur, état)
 function DrawGeneralInfo(var yPos: Integer): Integer;
 var
-  playerText: string;
-  stateText: string;
-  stateDisplayText: string;
-  tourText: string;
   i: Integer;
-  forceDefender, forceAttacker: Single;
-  unitStatus: string;
+  unitID: Integer;
+  modifiedForce: Single;
+  hasWallOrGate, hasSpecialUnit: Boolean;
+  specialUnitID: Integer;
+  forceText: string;
+  playerText: string;
+  attackForce: Single;
 begin
-  // Débogage : Afficher l'état de Game.CombatOrders avant l'affichage
-  AddMessage('DrawGeneralInfo : Length(Game.CombatOrders)=' + IntToStr(Length(Game.CombatOrders)));
-  if Length(Game.CombatOrders) > 0 then
-    AddMessage('TargetID=' + IntToStr(Game.CombatOrders[0].TargetID) +
-      ', Length(AttackerIDs)=' + IntToStr(Length(Game.CombatOrders[0].AttackerIDs)));
+  Result := yPos;
 
-  GuiPanel(RectangleCreate(screenWidth - rightBorderWidth, 0, rightBorderWidth, screenHeight), 'Informations');
-  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + (rightBorderWidth - 100) div 2, yPos, 100, 20), 'Moyen Age');
-  yPos := yPos + 20;
-  tourText := Format('N° Tour : %d/%d', [Game.CurrentTurn, MAX_TOURS]);
-  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(tourText));
-  yPos := yPos + 20;
+  // Afficher les informations générales
+  GuiGroupBox(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 450), 'Info générales');
 
+  Inc(yPos, 20);
+  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Tour : ' + IntToStr(Game.CurrentTurn) + ' / 15'));
+  Inc(yPos, 20);
+
+  // Afficher le joueur (remplacement demandé)
   if Game.CurrentPlayer.IsAttacker then
   begin
     playerText := 'Attaquant';
-    if Game.Attacker.PlayerType = ptAI then
+    if Game.AttackerType = 1 then
       playerText := playerText + ' - AI'
     else
       playerText := playerText + ' - Humain';
@@ -942,106 +874,120 @@ begin
   else
   begin
     playerText := 'Défenseur';
-    if Game.Defender.PlayerType = ptAI then
+    if Game.DefenderType = 1 then
       playerText := playerText + ' - AI'
     else
       playerText := playerText + ' - Humain';
   end;
-  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar('Joueur : ' + playerText));
+  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Joueur : ' + playerText));
   yPos := yPos + 20;
 
-  stateText := GetEnumName(TypeInfo(TGameState), Ord(Game.CurrentState));
-  case Game.CurrentState of
-    gsSetupAttacker: stateDisplayText := 'Placement des troupes (Attaquant)';
-    gsSetupDefender: stateDisplayText := 'Placement des troupes (Défenseur)';
-    gsAttackerMoveOrders: stateDisplayText := 'Ordres de mouvement (Attaquant)';
-    gsAttackerMoveExecute: stateDisplayText := 'Exécution des mouvements (Attaquant)';
-    gsAttackerBattleOrders: stateDisplayText := 'Ordres de combat (Attaquant)';
-    gsDefenderMoveOrders: stateDisplayText := 'Ordres de mouvement (Défenseur)';
-    gsDefenderMoveExecute: stateDisplayText := 'Exécution des mouvements (Défenseur)';
-    gsDefenderBattleOrders: stateDisplayText := 'Ordres de combat (Défenseur)';
-    gsCheckVictoryAttacker: stateDisplayText := 'Vérification victoire (Attaquant)';
-    gsCheckVictoryDefender: stateDisplayText := 'Vérification victoire (Défenseur)';
-    gsplayerturn: stateDisplayText := 'Tour du joueur';
-    gsGameOver: stateDisplayText := 'Fin du jeu';
-    else stateDisplayText := stateText;
-  end;
-  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar('État : ' + stateDisplayText));
-  yPos := yPos + 20;
+  // Afficher la phase
+  GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Phase : ' + GetStateDisplayText(Game.CurrentState)));
+  Inc(yPos, 20);
 
+  // Afficher le ravitaillement si pertinent
   if Game.CurrentState in [gsAttackerBattleOrders, gsDefenderBattleOrders] then
   begin
-    // Calculer les forces totales
-    forceDefender := 0.0;
-    forceAttacker := 0.0;
-    if Length(Game.CombatOrders) > 0 then
-    begin
-      if Game.CombatOrders[0].TargetID >= 1 then
-        forceDefender := Game.Units[Game.CombatOrders[0].TargetID].Force;
-      for i := 0 to Min(9, High(Game.CombatOrders[0].AttackerIDs)) do
-        forceAttacker := forceAttacker + Game.Units[Game.CombatOrders[0].AttackerIDs[i]].Force;
-    end;
+    GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Ravitaillement : ' + FloatToStr(Game.CurrentPlayer.Ravitaillement)));
+    Inc(yPos, 20);
+  end;
 
-    // Afficher les informations de combat
-    if Game.CurrentState = gsDefenderBattleOrders then
+  // Afficher les informations sur la cible
+  if (Length(Game.CombatOrders) > 0) then
+  begin
+    // Si une unité est ciblée
+    if Game.CombatOrders[0].TargetID >= 1 then
     begin
-      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Ravitaillement : %.1f', [Game.Defender.Ravitaillement])));
-      yPos := yPos + 20;
-      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Force totale défenseur : %.0f', [forceDefender])));
-      yPos := yPos + 20;
-      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Force totale attaquante : %.0f', [forceAttacker])));
-      yPos := yPos + 20;
+      unitID := Game.CombatOrders[0].TargetID;
+      modifiedForce := Game.Units[unitID].Force;
+
+      // Vérifier si l'hexagone a un mur ou une grille
+      hasWallOrGate := (Hexagons[Game.CombatOrders[0].TargetHexID].HasWall) or (Hexagons[Game.CombatOrders[0].TargetHexID].Objet = 3000);
+
+      // Vérifier si une unité spéciale est présente sur cet hexagone
+      hasSpecialUnit := False;
+      specialUnitID := -1;
+      for i := 1 to MAX_UNITS do
+      begin
+        if (Game.Units[i].HexagoneActuel = Game.CombatOrders[0].TargetHexID) and
+           (Game.Units[i].numplayer = Game.Units[unitID].numplayer) and
+           (Game.Units[i].TypeUnite.Id in [4, 5, 13, 14]) then // duc, lieutenant, comte, chef milicien
+        begin
+          hasSpecialUnit := True;
+          specialUnitID := i;
+          Break;
+        end;
+      end;
+
+      // Calculer la force modifiée (force de défense)
+      if hasSpecialUnit then
+      begin
+        modifiedForce := Game.Units[unitID].Force * 3;
+        forceText := 'Force : ' + FloatToStr(modifiedForce) + ' (base ' + FloatToStr(Game.Units[unitID].Force) + ', x3)';
+      end
+      else if hasWallOrGate then
+      begin
+        modifiedForce := Game.Units[unitID].Force * 2;
+        forceText := 'Force : ' + FloatToStr(modifiedForce) + ' (base ' + FloatToStr(Game.Units[unitID].Force) + ', x2)';
+      end
+      else
+      begin
+        forceText := 'Force : ' + FloatToStr(modifiedForce);
+      end;
+
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Cible : ID : ' + IntToStr(unitID) + ' - ' + Game.Units[unitID].TypeUnite.lenom));
+      Inc(yPos, 20);
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Force défense : ' + forceText));
+      Inc(yPos, 20);
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Hexagone : ' + IntToStr(Game.Units[unitID].HexagoneActuel)));
+      Inc(yPos, 20);
+      if hasSpecialUnit then
+      begin
+        GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Unité spéciale présente : ID ' + IntToStr(specialUnitID)));
+        Inc(yPos, 20);
+      end;
+    end
+    // Si seul un hexagone est ciblé (mur ou grille)
+    else if Game.CombatOrders[0].TargetHexID >= 1 then
+    begin
+      if Hexagons[Game.CombatOrders[0].TargetHexID].Objet = 3000 then
+        GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Cible : Grille'))
+      else if Hexagons[Game.CombatOrders[0].TargetHexID].HasWall then
+        GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Cible : Mur'))
+      else
+        GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Cible : Hexagone ' + IntToStr(Game.CombatOrders[0].TargetHexID)));
+      Inc(yPos, 20);
     end
     else
     begin
-      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Force totale défenseur : %.0f', [forceDefender])));
-      yPos := yPos + 20;
-      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Force totale attaquante : %.0f', [forceAttacker])));
-      yPos := yPos + 20;
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Aucune cible sélectionnée'));
+      Inc(yPos, 20);
     end;
 
-    // Afficher la section Cible
-    GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), 'Cible :');
-    yPos := yPos + 20;
-    if Length(Game.CombatOrders) > 0 then
+    // Calculer et afficher la force d'attaque (total des attaquants)
+    if Length(Game.CombatOrders[0].AttackerIDs) > 0 then
     begin
-      if Game.CombatOrders[0].TargetID >= 1 then
-      begin
-        unitStatus := GetUnitStatus(Game.CombatOrders[0].TargetID);
-        GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20),
-          PChar(Format('ID : %d - %d - %s', [Game.CombatOrders[0].TargetID, Game.Units[Game.CombatOrders[0].TargetID].Force, unitStatus])));
-        yPos := yPos + 20;
-      end;
-      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), 'Attaquant :');
-      yPos := yPos + 20;
-      for i := 0 to Min(9, High(Game.CombatOrders[0].AttackerIDs)) do
-      begin
-        unitStatus := GetUnitStatus(Game.CombatOrders[0].AttackerIDs[i]);
-        GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20),
-          PChar(Format('ID : %d - %d - %s', [Game.CombatOrders[0].AttackerIDs[i], Game.Units[Game.CombatOrders[0].AttackerIDs[i]].Force, unitStatus])));
-        yPos := yPos + 15;
-      end;
-    end
-    else
+      attackForce := CalculateTotalForce(Game.CombatOrders[0].AttackerIDs);
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Force attaque : ' + FloatToStr(attackForce)));
+      Inc(yPos, 20);
+    end;
+
+    // Afficher les attaquants
+    for i := 0 to Min(9, High(Game.CombatOrders[0].AttackerIDs)) do
     begin
-      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), 'Aucune cible sélectionnée');
-      yPos := yPos + 20;
+      unitID := Game.CombatOrders[0].AttackerIDs[i];
+      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Attaquant : ID : ' + IntToStr(unitID) + ' - ' + Game.Units[unitID].TypeUnite.lenom));
+      Inc(yPos, 20);
     end;
   end
   else
   begin
-    // Affichage standard pour les autres phases
-    if not Game.CurrentPlayer.IsAttacker then
-    begin
-      GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 10, yPos, 230, 20), PChar(Format('Ravitaillement : %.1f', [Game.Defender.Ravitaillement])));
-      yPos := yPos + 20;
-    end;
+    GuiLabel(RectangleCreate(screenWidth - rightBorderWidth + 20, yPos, 210, 20), PChar('Aucune cible sélectionnée'));
+    Inc(yPos, 20);
   end;
 
-  // Ajouter un espace après les informations générales
-  yPos := yPos + 10;
-
-  Result := yPos; // Retourner la nouvelle position yPos
+  Result := yPos;
 end;
 
 // Affiche les informations de l'hexagone sélectionné et des unités
@@ -1061,7 +1007,7 @@ var
   dialogResult: Integer;
   suivantButtonY: Integer;
   playerText: string;
-  stateDisplayText: string;
+ // stateDisplayText: string;
   i: Integer;
 begin
   suivantButtonY := screenHeight - bottomBorderHeight - 70;

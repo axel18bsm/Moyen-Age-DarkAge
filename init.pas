@@ -16,8 +16,9 @@ const
 
 type
   TCombatOrder = record
-    AttackerIDs: array of Integer; // Liste des ID des unités attaquantes
-    TargetID: Integer; // ID de l'unité cible
+    TargetID: Integer;      // ID de l'unité cible
+    TargetHexID: Integer;   // ID de l'hexagone cible (nouveau champ pour les murs/grilles)
+    AttackerIDs: array of Integer; // Liste des attaquants
   end;
 type
   TPlayerType = (ptHuman, ptAI); // Type de joueur : Humain ou IA
@@ -184,6 +185,8 @@ end;
     CurrentUnitIndex: Integer; // Index de l'unité actuellement en cours de traitement dans le cycle
     PlayerTurnProcessed: Boolean; // Indique si les traitements du tour ont été effectués
     CombatOrders: array of TCombatOrder; // Ordres de combat en cours
+
+
   end;
 
   // Type pour représenter un hexagone

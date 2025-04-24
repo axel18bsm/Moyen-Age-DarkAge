@@ -28,6 +28,8 @@ procedure HandleRavitaillement;
 procedure OrderBoatReturn;
 function GetUnitStatus(unitID: Integer): string;
 function CalculateTotalForce(unitIDs: array of Integer): Single;
+function IsInRangeBFS(unite: TUnit; hexCible: Integer; vecteurCible: TVector2; maxDistance: Integer): Boolean;
+function IsInRangeEuclidean(unite: TUnit; hexCible: Integer; vecteurCible: TVector2; maxDistance: Integer):Boolean;
 
 
 
@@ -35,6 +37,148 @@ function CalculateTotalForce(unitIDs: array of Integer): Single;
 
 implementation
 uses GameManager;
+
+function IsInRangeBFS(unite: TUnit; hexCible: Integer; vecteurCible: TVector2; maxDistance: Integer): Boolean;
+type
+  TQueueEntry = record
+    HexID: Integer;
+    Distance: Integer;
+  end;
+var
+  queue: array of TQueueEntry;
+  queueStart, queueEnd: Integer;
+  visited: array of Boolean;
+  i, neighborID, adjustedNeighborID: Integer;
+  currentEntry: TQueueEntry;
+  hexStart: Integer;
+  distanceFound: Integer;
+begin
+  Result := False;
+
+  hexStart := unite.HexagoneActuel;
+
+  // Cas particulier : même hexagone
+  if hexStart = hexCible then
+  begin
+    distanceFound := 0;
+    Result := (distanceFound >= unite.DistCombatMin) and (distanceFound <= unite.DistCombatMax);
+    Exit;
+  end;
+
+  // Initialiser la file pour BFS
+  SetLength(queue, HexagonCount);
+  queueStart := 0;
+  queueEnd := 0;
+  queue[queueEnd].HexID := hexStart;
+  queue[queueEnd].Distance := 0;
+  Inc(queueEnd);
+
+  // Initialiser le tableau des hexagones visités
+  SetLength(visited, HexagonCount + 1);
+  for i := 0 to HexagonCount do
+    visited[i] := False;
+  visited[hexStart] := True;
+
+  // Parcourir la grille avec BFS
+  while queueStart < queueEnd do
+  begin
+    // Récupérer l'hexagone courant
+    currentEntry := queue[queueStart];
+    Inc(queueStart);
+
+    // Vérifier si on a atteint la cible
+    if currentEntry.HexID = hexCible then
+    begin
+      distanceFound := currentEntry.Distance;
+      Result := (distanceFound >= unite.DistCombatMin) and (distanceFound <= unite.DistCombatMax);
+      Exit;
+    end;
+
+    // Vérifier si la distance dépasse maxDistance
+    if currentEntry.Distance >= maxDistance then
+      Continue;
+
+    // Explorer les voisins
+    for i := 1 to 6 do
+    begin
+      case i of
+        1: neighborID := Hexagons[currentEntry.HexID].Neighbor1;
+        2: neighborID := Hexagons[currentEntry.HexID].Neighbor2;
+        3: neighborID := Hexagons[currentEntry.HexID].Neighbor3;
+        4: neighborID := Hexagons[currentEntry.HexID].Neighbor4;
+        5: neighborID := Hexagons[currentEntry.HexID].Neighbor5;
+        6: neighborID := Hexagons[currentEntry.HexID].Neighbor6;
+      end;
+
+      // Appliquer la règle : si l'ID est supérieur à 832, utiliser modulo 1000
+      adjustedNeighborID := neighborID;
+      if neighborID > 832 then
+        adjustedNeighborID := neighborID mod 1000;
+
+      // Ignorer les voisins invalides (ID = 0)
+      if adjustedNeighborID = 0 then
+        Continue;
+
+      if not visited[adjustedNeighborID] then
+      begin
+        // Ajouter le voisin à la file
+        visited[adjustedNeighborID] := True;
+        queue[queueEnd].HexID := adjustedNeighborID;
+        queue[queueEnd].Distance := currentEntry.Distance + 1;
+        Inc(queueEnd);
+      end;
+    end;
+  end;
+
+  // Si la cible n'est pas atteinte
+  Result := False;
+end;
+
+// Fonction : IsInRangeEuclidean (Approximation euclidienne)
+function IsInRangeEuclidean(unite: TUnit; hexCible: Integer; vecteurCible: TVector2; maxDistance: Integer): Boolean;
+const
+  HEX_SIZE = 50; // À ajuster selon la taille réelle des hexagones (distance entre deux centres voisins)
+var
+  x1, y1, x2, y2: Single;
+  distanceEuclidean: Single;
+  distanceHexagons: Integer;
+  hexStart: Integer;
+begin
+  Result := False;
+
+  hexStart := unite.HexagoneActuel;
+
+  // Cas particulier : même hexagone
+  if hexStart = hexCible then
+  begin
+    distanceHexagons := 0;
+    Result := (distanceHexagons >= unite.DistCombatMin) and (distanceHexagons <= unite.DistCombatMax);
+    Exit;
+  end;
+
+  // Récupérer les coordonnées centrales
+  x1 := Hexagons[hexStart].CenterX;
+  y1 := Hexagons[hexStart].CenterY;
+  x2 := vecteurCible.x;
+  y2 := vecteurCible.y;
+
+  // Calculer la distance euclidienne
+  distanceEuclidean := Sqrt(Sqr(x2 - x1) + Sqr(y2 - y1));
+
+  // Convertir en nombre d'hexagones (approximation)
+  distanceHexagons := Round(distanceEuclidean / HEX_SIZE);
+
+  // Vérifier si la distance dépasse maxDistance
+  if distanceHexagons > maxDistance then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  // Vérifier la portée
+  Result := (distanceHexagons >= unite.DistCombatMin) and (distanceHexagons <= unite.DistCombatMax);
+end;
+
 
 function CalculateTotalForce(unitIDs: array of Integer): Single;
 var
