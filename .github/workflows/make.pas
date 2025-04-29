@@ -178,10 +178,13 @@ uses
         ExitCode += 1;
         OutLog(etError, Result);
       end;
-    List := FindAllFiles(GetCurrentDir, '*.lpk');
+    List := FindAllFiles(GetCurrentDir, '*.o');
     try
+      for Result in List do
+        AddDDL(Result);
       for Result in Dependencies do
         List.AddStrings(FindAllFiles(InstallOPM(Result), '*.lpk'));
+      List := FindAllFiles(GetCurrentDir, '*.lpk');
       for Result in List do
         AddPackage(Result);
       List := FindAllFiles(GetCurrentDir, '*.lpi');
