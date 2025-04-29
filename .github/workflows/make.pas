@@ -212,7 +212,7 @@ begin
   try
     if ParamCount > 0 then
       case ParamStr(1) of
-        'build': BuildAll(Time, ['Ray4Laz']);
+        'build': BuildAll(Time, []);
         else
           OutLog(etDebug, ParamStr(1));
       end;
