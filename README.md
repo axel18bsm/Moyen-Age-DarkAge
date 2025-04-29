@@ -3,7 +3,7 @@ Wargame fashioned old school in the darkAges. You can execute, but movement and 
 not implemented.  Setup of units can be deployed at random or manually. 2 players Human versus
 IA.
 
- step finish: naval, food supplies and music . Next step : unit figthing.
+ steps finishes: naval, food supplies, music, material fighting  . Next step :  human units figthing.
 
 
 Some pictures of the game
