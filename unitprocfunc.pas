@@ -30,6 +30,10 @@ function GetUnitStatus(unitID: Integer): string;
 function CalculateTotalForce(unitIDs: array of Integer): Single;
 function IsInRangeBFS(unite: TUnit; hexCible: Integer; vecteurCible: TVector2; maxDistance: Integer): Boolean;
 function IsInRangeEuclidean(unite: TUnit; hexCible: Integer; vecteurCible: TVector2; maxDistance: Integer):Boolean;
+procedure SelectCombatTargetAndAttackers(numplayer: Integer);
+function FindSecondHexagonForWall(targetHexID: Integer; catapultID: Integer): Integer;
+procedure ExecuteMaterialCombat;
+procedure ResetCombatFlags;
 
 
 
@@ -37,6 +41,494 @@ function IsInRangeEuclidean(unite: TUnit; hexCible: Integer; vecteurCible: TVect
 
 implementation
 uses GameManager;
+function FindSecondHexagonForWall(targetHexID: Integer; catapultID: Integer): Integer;
+var
+  i, neighborID, adjustedNeighborID: Integer;
+  centerX, centerY, catapultX, catapultY: Single;
+  angle, minAngle: Single;
+  closestNeighbor: Integer;
+begin
+  Result := -1;
+  if (targetHexID < 1) or (targetHexID > HexagonCount) or (catapultID < 1) or (catapultID > MAX_UNITS) then
+    Exit;
+
+  // Coordonnées du centre de l'hexagone cible
+  centerX := Hexagons[targetHexID].CenterX;
+  centerY := Hexagons[targetHexID].CenterY;
+
+  // Coordonnées de la catapulte
+  catapultX := Game.Units[catapultID].PositionActuelle.x;
+  catapultY := Game.Units[catapultID].PositionActuelle.y;
+
+  // Trouver le voisin le plus aligné avec la direction de la catapulte
+  minAngle := 360; // Une grande valeur pour trouver le minimum
+  closestNeighbor := -1;
+
+  for i := 1 to 6 do
+  begin
+    case i of
+      1: neighborID := Hexagons[targetHexID].Neighbor1;
+      2: neighborID := Hexagons[targetHexID].Neighbor2;
+      3: neighborID := Hexagons[targetHexID].Neighbor3;
+      4: neighborID := Hexagons[targetHexID].Neighbor4;
+      5: neighborID := Hexagons[targetHexID].Neighbor5;
+      6: neighborID := Hexagons[targetHexID].Neighbor6;
+    end;
+
+    // Ajuster l'ID si nécessaire (pour les rivières ou murs)
+    adjustedNeighborID := neighborID;
+    if neighborID > 832 then
+      adjustedNeighborID := neighborID mod 1000;
+
+    // Vérifier si le voisin est valide
+    if (adjustedNeighborID >= 1) and (adjustedNeighborID <= HexagonCount) then
+    begin
+      // Calculer l'angle entre la catapulte et ce voisin
+      angle := ArcTan2(Hexagons[adjustedNeighborID].CenterY - centerY, Hexagons[adjustedNeighborID].CenterX - centerX) -
+               ArcTan2(catapultY - centerY, catapultX - centerX);
+      angle := Abs(angle * 180 / Pi); // Convertir en degrés et prendre la valeur absolue
+      if angle > 180 then
+        angle := 360 - angle;
+
+      // Trouver le voisin avec l'angle le plus petit
+      if angle < minAngle then
+      begin
+        minAngle := angle;
+        closestNeighbor := adjustedNeighborID;
+      end;
+    end;
+  end;
+
+  Result := closestNeighbor;
+end;
+
+// Remplacer la procédure ExecuteMaterialCombat par :
+procedure ExecuteMaterialCombat;
+var
+  diceRoll: Integer;
+  i, j: Integer;
+  wallDestroyed: Boolean;
+  attackerID: Integer;
+  numCatapults: Integer;
+  isWall, isGate: Boolean;
+  secondHexID: Integer;
+  targetHexIDAdjusted: Integer;
+  hasBelier: Boolean;
+  belierEffectApplied: Boolean;
+  hasInfantry: Boolean;
+begin
+  if (Length(Game.CombatOrders) = 0) or (Length(Game.CombatOrders[0].AttackerIDs) = 0) then
+    Exit;
+
+  // Initialiser les variables
+  wallDestroyed := False;
+  belierEffectApplied := False;
+  hasBelier := False;
+  hasInfantry := Game.CombatOrders[0].TargetID >= 1; // Vérifier si une unité ennemie est ciblée
+
+  // Déterminer si la cible est un mur ou une grille
+  isWall := Hexagons[Game.CombatOrders[0].TargetHexID].HasWall;
+  isGate := Hexagons[Game.CombatOrders[0].TargetHexID].Objet = 3000;
+
+  // Compter le nombre de trébuchets et vérifier la présence d'un bélier
+  numCatapults := 0;
+  for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+  begin
+    attackerID := Game.CombatOrders[0].AttackerIDs[i];
+    if (attackerID >= 1) and (attackerID <= MAX_UNITS) then
+    begin
+      if Game.Units[attackerID].TypeUnite.lenom = 'trebuchet' then
+        Inc(numCatapults)
+      else if Game.Units[attackerID].TypeUnite.lenom = 'belier' then
+        hasBelier := True;
+    end;
+  end;
+
+  // Gérer l'attaque du bélier (uniquement sur une grille)
+  if hasBelier then
+  begin
+    if isGate then
+    begin
+      // Jet de dé pour le bélier (même seuils que pour 1 catapulte)
+      diceRoll := Random(6) + 1; // 1 à 6
+      case diceRoll of
+        1..4:
+        begin
+          AddMessage('Combat : Aucun effet (bélier)');
+        end;
+        5..6:
+        begin
+          if Hexagons[Game.CombatOrders[0].TargetHexID].IsDamaged then
+          begin
+            AddMessage('Combat : Grille : détruite (bélier)');
+            wallDestroyed := True;
+          end
+          else
+          begin
+            AddMessage('Combat : Grille : endommagée (bélier)');
+            Hexagons[Game.CombatOrders[0].TargetHexID].IsDamaged := True;
+            belierEffectApplied := True;
+          end;
+        end;
+      end;
+    end
+    else
+    begin
+      AddMessage('Combat : Aucun effet (bélier, cible non-grille)');
+    end;
+  end;
+
+  // Gérer l'attaque des trébuchets
+  if numCatapults > 0 then
+  begin
+    // Effectuer le jet de dé des trébuchets si la cible est un mur, une grille, ou une unité ennemie
+    // ou si le bélier a détruit la grille mais qu'il reste un mur ou une unité
+    if (isWall or isGate or hasInfantry) or (wallDestroyed and (isWall or hasInfantry)) then
+    begin
+      diceRoll := Random(6) + 1; // 1 à 6
+      case numCatapults of
+        1:
+        begin
+          case diceRoll of
+            1..4:
+            begin
+              AddMessage('Combat : Aucun effet (trébuchets)');
+            end;
+            5..6:
+            begin
+              if Hexagons[Game.CombatOrders[0].TargetHexID].IsDamaged then
+              begin
+                if isGate then
+                  AddMessage('Combat : Grille : détruite (trébuchets)')
+                else
+                  AddMessage('Combat : Mur détruit (trébuchets)');
+                wallDestroyed := True;
+              end
+              else
+              begin
+                if isGate then
+                  AddMessage('Combat : Grille : endommagée (trébuchets)')
+                else
+                  AddMessage('Combat : Mur endommagé (trébuchets)');
+                Hexagons[Game.CombatOrders[0].TargetHexID].IsDamaged := True;
+              end;
+            end;
+          end;
+        end;
+        2:
+        begin
+          case diceRoll of
+            1..3:
+            begin
+              AddMessage('Combat : Aucun effet (trébuchets)');
+            end;
+            4..5:
+            begin
+              if Hexagons[Game.CombatOrders[0].TargetHexID].IsDamaged then
+              begin
+                if isGate then
+                  AddMessage('Combat : Grille : détruite (trébuchets)')
+                else
+                  AddMessage('Combat : Mur détruit (trébuchets)');
+                wallDestroyed := True;
+              end
+              else
+              begin
+                if isGate then
+                  AddMessage('Combat : Grille : endommagée (trébuchets)')
+                else
+                  AddMessage('Combat : Mur endommagé (trébuchets)');
+                Hexagons[Game.CombatOrders[0].TargetHexID].IsDamaged := True;
+              end;
+            end;
+            6:
+            begin
+              if isGate then
+                AddMessage('Combat : Grille : détruite (trébuchets)')
+              else
+                AddMessage('Combat : Mur détruit (trébuchets)');
+              wallDestroyed := True;
+            end;
+          end;
+        end;
+        3:
+        begin
+          case diceRoll of
+            1..2:
+            begin
+              AddMessage('Combat : Aucun effet (trébuchets)');
+            end;
+            3..4:
+            begin
+              if Hexagons[Game.CombatOrders[0].TargetHexID].IsDamaged then
+              begin
+                if isGate then
+                  AddMessage('Combat : Grille : détruite (trébuchets)')
+                else
+                  AddMessage('Combat : Mur détruit (trébuchets)');
+                wallDestroyed := True;
+              end
+              else
+              begin
+                if isGate then
+                  AddMessage('Combat : Grille : endommagée (trébuchets)')
+                else
+                  AddMessage('Combat : Mur endommagé (trébuchets)');
+                Hexagons[Game.CombatOrders[0].TargetHexID].IsDamaged := True;
+              end;
+            end;
+            5..6:
+            begin
+              if isGate then
+                AddMessage('Combat : Grille : détruite (trébuchets)')
+              else
+                AddMessage('Combat : Mur détruit (trébuchets)');
+              wallDestroyed := True;
+            end;
+          end;
+        end;
+      end;
+    end;
+  end;
+
+  // Si le mur/grille est détruit, ajuster les voisins
+  if wallDestroyed then
+  begin
+    // Mettre à jour l'hexagone cible
+    Hexagons[Game.CombatOrders[0].TargetHexID].HasWall := False;
+    if Hexagons[Game.CombatOrders[0].TargetHexID].Objet = 3000 then
+      Hexagons[Game.CombatOrders[0].TargetHexID].Objet := 0;
+    Hexagons[Game.CombatOrders[0].TargetHexID].IsDamaged := False;
+
+    // Mettre à jour les voisins de l'hexagone cible
+    for i := 1 to 6 do
+    begin
+      case i of
+        1: Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor1 := Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor1 mod 1000;
+        2: Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor2 := Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor2 mod 1000;
+        3: Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor3 := Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor3 mod 1000;
+        4: Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor4 := Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor4 mod 1000;
+        5: Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor5 := Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor5 mod 1000;
+        6: Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor6 := Hexagons[Game.CombatOrders[0].TargetHexID].Neighbor6 mod 1000;
+      end;
+    end;
+
+    // Parcourir chaque attaquant pour trouver l'hexagone voisin (secondHexID) et mettre à jour son état
+    for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+    begin
+      attackerID := Game.CombatOrders[0].AttackerIDs[i];
+      if (attackerID < 1) or (attackerID > MAX_UNITS) then
+        Continue;
+
+      // Trouver le second hexagone pour le mur
+      secondHexID := FindSecondHexagonForWall(Game.CombatOrders[0].TargetHexID, attackerID);
+      if (secondHexID < 1) or (secondHexID > HexagonCount) then
+        Continue;
+
+      // Mettre à jour l'état de l'hexagone voisin
+      Hexagons[secondHexID].HasWall := False;
+      if Hexagons[secondHexID].Objet = 3000 then
+        Hexagons[secondHexID].Objet := 0;
+      Hexagons[secondHexID].IsDamaged := False;
+
+      // Mettre à jour les voisins de l'hexagone voisin
+      for j := 1 to 6 do
+      begin
+        // Ajuster le voisin pour qu'il soit comparable (modulo 1000)
+        case j of
+          1: targetHexIDAdjusted := Hexagons[secondHexID].Neighbor1 mod 1000;
+          2: targetHexIDAdjusted := Hexagons[secondHexID].Neighbor2 mod 1000;
+          3: targetHexIDAdjusted := Hexagons[secondHexID].Neighbor3 mod 1000;
+          4: targetHexIDAdjusted := Hexagons[secondHexID].Neighbor4 mod 1000;
+          5: targetHexIDAdjusted := Hexagons[secondHexID].Neighbor5 mod 1000;
+          6: targetHexIDAdjusted := Hexagons[secondHexID].Neighbor6 mod 1000;
+          else targetHexIDAdjusted := -1;
+        end;
+
+        // Si le voisin correspond à l'hexagone cible, appliquer modulo 1000
+        if targetHexIDAdjusted = Game.CombatOrders[0].TargetHexID then
+        begin
+          case j of
+            1: Hexagons[secondHexID].Neighbor1 := Hexagons[secondHexID].Neighbor1 mod 1000;
+            2: Hexagons[secondHexID].Neighbor2 := Hexagons[secondHexID].Neighbor2 mod 1000;
+            3: Hexagons[secondHexID].Neighbor3 := Hexagons[secondHexID].Neighbor3 mod 1000;
+            4: Hexagons[secondHexID].Neighbor4 := Hexagons[secondHexID].Neighbor4 mod 1000;
+            5: Hexagons[secondHexID].Neighbor5 := Hexagons[secondHexID].Neighbor5 mod 1000;
+            6: Hexagons[secondHexID].Neighbor6 := Hexagons[secondHexID].Neighbor6 mod 1000;
+          end;
+        end;
+      end;
+    end;
+
+    // Redétecter les murs pour les hexagones voisins
+    DetectWalls();
+  end;
+
+  // Mettre à jour les flags des unités attaquantes
+  for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+  begin
+    attackerID := Game.CombatOrders[0].AttackerIDs[i];
+    if (attackerID >= 1) and (attackerID <= MAX_UNITS) then
+      Game.Units[attackerID].HasAttacked := True;
+  end;
+
+  // Réinitialiser les ordres de combat
+  SetLength(Game.CombatOrders, 0);
+end;
+/// Remplacer la procédure SelectCombatTargetAndAttackers par :
+procedure SelectCombatTargetAndAttackers(numplayer: Integer);
+var
+  mousePos: TVector2;
+  unitIndex, hexID, i: Integer;
+  alreadyAttacker: Boolean;
+  targetPlayer: Integer;
+  numTrebuchets, numBeliers: Integer;
+begin
+  mousePos := GetScreenToWorld2D(GetMousePosition(), camera);
+
+  // Déterminer le joueur cible (inversé par rapport à numplayer)
+  targetPlayer := 3 - numplayer;
+
+  // Clic droit : Sélectionner une cible (hexagone et unité si présente)
+  if IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) then
+  begin
+    // Détecter l'hexagone cliqué
+    hexID := GetHexagonAtPosition(mousePos.x, mousePos.y);
+    if hexID < 1 then
+      Exit;
+
+    // Réinitialiser les ordres de combat
+    if Length(Game.CombatOrders) = 0 then
+      SetLength(Game.CombatOrders, 1);
+    Game.CombatOrders[0].TargetHexID := hexID;
+    Game.CombatOrders[0].TargetID := -1; // Par défaut, pas d'unité
+    SetLength(Game.CombatOrders[0].AttackerIDs, 0); // Réinitialiser les attaquants
+
+    // Vérifier si une unité ennemie est présente sur cet hexagone
+    for unitIndex := 1 to MAX_UNITS do
+    begin
+      if not (Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel = hexID)) then
+        Continue;
+      if not (Game.Units[unitIndex].numplayer = targetPlayer) or Game.Units[unitIndex].IsAttacked then
+        Continue;
+
+      Game.CombatOrders[0].TargetID := unitIndex;
+      AddMessage('Unité cible ' + IntToStr(unitIndex) + ' sélectionnée sur hexagone ' + IntToStr(hexID));
+      Exit;
+    end;
+
+    // Si aucune unité n'est présente, vérifier si c'est un mur ou une grille
+    if (Hexagons[hexID].HasWall) or (Hexagons[hexID].Objet = 3000) then
+      AddMessage('Hexagone cible ' + IntToStr(hexID) + ' sélectionné (mur/grille)')
+    else
+      AddMessage('Hexagone cible ' + IntToStr(hexID) + ' sélectionné');
+    Exit;
+  end;
+
+  // Clic gauche : Ajouter une unité comme attaquant
+  if IsMouseButtonPressed(MOUSE_BUTTON_LEFT) then
+  begin
+    if (Length(Game.CombatOrders) = 0) or (Game.CombatOrders[0].TargetHexID < 1) then
+    begin
+      AddMessage('Sélectionnez une cible avant d''ajouter un attaquant.');
+      Exit;
+    end;
+
+    for unitIndex := 1 to MAX_UNITS do
+    begin
+      if not (Game.Units[unitIndex].visible and (Game.Units[unitIndex].HexagoneActuel >= 1)) then
+        Continue;
+      if not CheckCollisionPointRec(mousePos, Game.Units[unitIndex].BtnPerim) then
+        Continue;
+      if not (Game.Units[unitIndex].numplayer = numplayer) or Game.Units[unitIndex].HasAttacked then
+        Continue;
+
+      // Vérifier si l'attaquant est déjà dans la liste
+      alreadyAttacker := False;
+      for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+        if Game.CombatOrders[0].AttackerIDs[i] = unitIndex then
+        begin
+          alreadyAttacker := True;
+          Break;
+        end;
+      if alreadyAttacker then
+        Continue;
+
+      // Vérifier la portée
+      // Si une unité ennemie est ciblée (TargetID >= 1), vérifier la portée par rapport à l'hexagone de cette unité
+      if Game.CombatOrders[0].TargetID >= 1 then
+      begin
+        if not IsInRangeBFS(Game.Units[unitIndex],
+                            Game.Units[Game.CombatOrders[0].TargetID].HexagoneActuel,
+                            Vector2Create(Hexagons[Game.Units[Game.CombatOrders[0].TargetID].HexagoneActuel].CenterX,
+                                          Hexagons[Game.Units[Game.CombatOrders[0].TargetID].HexagoneActuel].CenterY),
+                            Game.Units[unitIndex].DistCombatMax) then
+        begin
+          AddMessage('Attaquant id ' + IntToStr(unitIndex) + ' hors de portée');
+          Continue;
+        end;
+      end
+      else
+      // Sinon, vérifier la portée par rapport à l'hexagone cible (mur/grille)
+      begin
+        if not IsInRangeBFS(Game.Units[unitIndex],
+                            Game.CombatOrders[0].TargetHexID,
+                            Vector2Create(Hexagons[Game.CombatOrders[0].TargetHexID].CenterX,
+                                          Hexagons[Game.CombatOrders[0].TargetHexID].CenterY),
+                            Game.Units[unitIndex].DistCombatMax) then
+        begin
+          AddMessage('Attaquant id ' + IntToStr(unitIndex) + ' hors de portée');
+          Continue;
+        end;
+      end;
+
+      // Vérifier la limite de 10 attaquants
+      if Length(Game.CombatOrders[0].AttackerIDs) >= 10 then
+      begin
+        AddMessage('Limite de 10 attaquants atteinte');
+        Exit;
+      end;
+
+      // Vérifier si l'unité est un bélier et si la cible est une grille
+      if (Game.Units[unitIndex].TypeUnite.lenom = 'belier') and (Hexagons[Game.CombatOrders[0].TargetHexID].Objet <> 3000) then
+        Continue;
+
+      // Compter les trébuchets et béliers déjà sélectionnés
+      numTrebuchets := 0;
+      numBeliers := 0;
+      for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
+      begin
+        if Game.Units[Game.CombatOrders[0].AttackerIDs[i]].TypeUnite.lenom = 'trebuchet' then
+          Inc(numTrebuchets)
+        else if Game.Units[Game.CombatOrders[0].AttackerIDs[i]].TypeUnite.lenom = 'belier' then
+          Inc(numBeliers);
+      end;
+
+      // Vérifier les limites spécifiques
+      if (Game.Units[unitIndex].TypeUnite.lenom = 'trebuchet') and (numTrebuchets >= 3) then
+        Continue;
+      if (Game.Units[unitIndex].TypeUnite.lenom = 'belier') and (numBeliers >= 1) then
+        Continue;
+
+      // Ajouter l'attaquant
+      SetLength(Game.CombatOrders[0].AttackerIDs, Length(Game.CombatOrders[0].AttackerIDs) + 1);
+      Game.CombatOrders[0].AttackerIDs[High(Game.CombatOrders[0].AttackerIDs)] := unitIndex;
+      AddMessage('Unité attaquante ' + IntToStr(unitIndex) + ' ajoutée');
+      Exit;
+    end;
+  end;
+end;
+
+procedure ResetCombatFlags;
+var
+  unitIndex: Integer;
+begin
+  for unitIndex := 1 to MAX_UNITS do
+  begin
+    Game.Units[unitIndex].IsAttacked := False;
+    Game.Units[unitIndex].HasAttacked := False;
+  end;
+end;
 
 function IsInRangeBFS(unite: TUnit; hexCible: Integer; vecteurCible: TVector2; maxDistance: Integer): Boolean;
 type
@@ -489,19 +981,16 @@ begin
     gsSplashScreen: Result := 'Écran de démarrage';
     gsMainMenu: Result := 'Menu principal';
     gsNewGameMenu: Result := 'Nouvelle partie';
-    gsSetupAttacker: Result := 'Placement des troupes (Attaquant)';
-    gsSetupDefender: Result := 'Placement des troupes (Défenseur)';
-    gsAttackerMoveOrders: Result := 'Ordres de mouvement (Attaquant)';
-    gsAttackerMoveExecute: Result := 'Exécution des mouvements (Attaquant)';
+    gsSetupAttacker: Result := 'Plact des troupes (Attaquant)';
+    gsSetupDefender: Result := 'Plact des troupes (Défenseur)';
+    gsAttackerMoveOrders: Result := 'Ordres de mvt (Attaquant)';
+    gsAttackerMoveExecute: Result := 'Exéc. des mvts (Attaquant)';
     gsAttackerBattleOrders: Result := 'Ordres de combat (Attaquant)';
-    gsAttackerBattleExecute: Result := 'Exécution des combats (Attaquant)';
-    gsCheckVictoryAttacker: Result := 'Vérification victoire (Attaquant)';
-    gsDefenderMoveOrders: Result := 'Ordres de mouvement (Défenseur)';
-    gsDefenderMoveExecute: Result := 'Exécution des mouvements (Défenseur)';
+    gsCheckVictoryAttacker: Result := 'Vérif. victoire (Attaquant)';
+    gsDefenderMoveOrders: Result := 'Ordres de mvt (Défenseur)';
+    gsDefenderMoveExecute: Result := 'Exéc. des mvts (Défenseur)';
     gsDefenderBattleOrders: Result := 'Ordres de combat (Défenseur)';
-    gsDefenderBattleExecute: Result := 'Exécution des combats (Défenseur)';
-    gsCheckVictoryDefender: Result := 'Vérification victoire (Défenseur)';
-    gsplayerturn: Result := 'Tour du joueur';
+    gsCheckVictoryDefender: Result := 'Vérif. victoire (Défenseur)';
     gsGameOver: Result := 'Fin du jeu';
     else Result := 'État inconnu';
   end;

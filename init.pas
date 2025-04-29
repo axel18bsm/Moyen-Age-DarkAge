@@ -119,14 +119,11 @@ end;
   gsAttackerMoveOrders,
   gsAttackerMoveExecute,
   gsAttackerBattleOrders,
-  gsAttackerBattleExecute,
   gsCheckVictoryAttacker,
   gsDefenderMoveOrders,
   gsDefenderMoveExecute,
   gsDefenderBattleOrders,
-  gsDefenderBattleExecute,
   gsCheckVictoryDefender,
-  gsplayerturn,
   gsGameOver
 );
 
@@ -223,6 +220,7 @@ end;
     HasWall: Boolean;     // Présence d'un mur adjacent (basé sur Objet entre 3000 et 4000)
     HasRiver:boolean;     //
     IsCastle: Boolean;    // est ce une case de type chateau
+    IsDamaged: Boolean // mur ou grille
   end;
 
 
@@ -942,7 +940,7 @@ begin
         Hexagons[i].IsCastle := (values[36] = 'oui'); // Initialiser à False, sera mis à jour après
         Hexagons[i].HasWall := False; // Initialiser à False, sera mis à jour après
         Hexagons[i].HasRiver := False; // Initialiser à False, sera mis à jour après
-
+        Hexagons[i].IsDamaged := False; // Initialiser l’état endommagé à False
       end;
     end;
   finally
