@@ -181,7 +181,7 @@ uses
     List := FindAllFiles(GetCurrentDir, '*.o');
     try
       for Result in List do
-        AddDDL(Result);
+        AddDDL('/usr/lib/', Result);
       for Result in Dependencies do
         List.AddStrings(FindAllFiles(InstallOPM(Result), '*.lpk'));
       List := FindAllFiles(GetCurrentDir, '*.lpk');
