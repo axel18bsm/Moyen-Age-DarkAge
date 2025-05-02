@@ -79,7 +79,7 @@ end;
     Force: Integer;          // Force de combat
     DistCombatMax: Integer;     // Distance en hexagone au combat max
     DistCombatMin: Integer;     // Distance en hexagone au combat mini
-    EtatUnite: Integer;      // Entière ou 1/2 force
+    EtatUnite: Integer;      // Entière 1/2 force ou kill
     TypeUnite: TtpUnite;     // Type d'unité
     visible: Boolean;        // Suis-je caché
     HexagoneActuel: Integer; // Sur quel terrain, je suis
@@ -220,7 +220,8 @@ end;
     HasWall: Boolean;     // Présence d'un mur adjacent (basé sur Objet entre 3000 et 4000)
     HasRiver:boolean;     //
     IsCastle: Boolean;    // est ce une case de type chateau
-    IsDamaged: Boolean // mur ou grille
+    IsDamaged: Boolean; // mur ou grille
+    IsAttacked: Boolean;
   end;
 
 
@@ -941,6 +942,7 @@ begin
         Hexagons[i].HasWall := False; // Initialiser à False, sera mis à jour après
         Hexagons[i].HasRiver := False; // Initialiser à False, sera mis à jour après
         Hexagons[i].IsDamaged := False; // Initialiser l’état endommagé à False
+        Hexagons[i].IsAttacked := False; // Initialiser l’état attaqué à False
       end;
     end;
   finally

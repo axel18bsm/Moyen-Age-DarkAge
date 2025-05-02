@@ -777,7 +777,7 @@ begin
     if Game.CurrentTurn >= 3 then
       AddBoat(1, Game.CurrentTurn);
 
-    HandleRavitaillement;
+    //HandleRavitaillement;
     OrderBoatReturn;
 
     for unitIndex := 1 to MAX_UNITS do
@@ -787,6 +787,8 @@ begin
       Game.Units[unitIndex].hasStopped := False;
     end;
     ResetCombatFlags; // Appeler la nouvelle fonction pour réinitialiser les flags
+    for i := 1 to HexagonCount do
+      Hexagons[i].IsAttacked := False;
 
     SetLength(Game.CombatOrders, 0);
 
@@ -821,7 +823,8 @@ begin
       Game.Units[unitIndex].hasStopped := False;
     end;
     ResetCombatFlags; // Appeler la nouvelle fonction pour réinitialiser les flags
-
+    for i := 1 to HexagonCount do
+      Hexagons[i].IsAttacked := False;
     SetLength(Game.CombatOrders, 0);
 
     Game.PlayerTurnProcessed := True;
@@ -2099,13 +2102,20 @@ begin
   // Ajouter le message s'il est différent du dernier message d'état
   // ou s'il s'agit d'un message d'action (contenant "déplacée" ou "sélectionnée")
   // ou s'il s'agit d'un message de changement d'état (contenant "Passage à l’état")
-  if (msg <> Game.LastStateMessage) or (Pos('déplacée', msg) > 0) or (Pos('sélectionnée', msg) > 0) or (Pos('Passage à l’état', msg) > 0) then
+  // ou s'il s'agit d'un message de combat (contenant "Combat :")
+  if (msg <> Game.LastStateMessage) or
+     (Pos('déplacée', msg) > 0) or
+     (Pos('sélectionnée', msg) > 0) or
+     (Pos('Passage à l’état', msg) > 0) or
+     (Pos('Combat :', msg) > 0) then // Ajout pour les messages de combat
   begin
     Inc(Game.MessageCount);
     SetLength(Game.Messages, Game.MessageCount);
     Game.Messages[Game.MessageCount - 1] := msg;
     // Mettre à jour LastStateMessage uniquement pour les messages d'état
-    if (Pos('déplacée', msg) = 0) and (Pos('sélectionnée', msg) = 0) then
+    if (Pos('déplacée', msg) = 0) and
+       (Pos('sélectionnée', msg) = 0) and
+       (Pos('Combat :', msg) = 0) then // Exclure les messages de combat
       Game.LastStateMessage := msg;
   end;
 end;
