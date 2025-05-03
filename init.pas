@@ -77,6 +77,7 @@ end;
     latexture: TTexture2D;   // Le dessin est stocké
     limage: TImage;          // Nom du fichier normal
     Force: Integer;          // Force de combat
+    Forcedmg: Integer;       // force dmg
     DistCombatMax: Integer;     // Distance en hexagone au combat max
     DistCombatMin: Integer;     // Distance en hexagone au combat mini
     EtatUnite: Integer;      // Entière 1/2 force ou kill
@@ -436,6 +437,7 @@ begin
       Game.Units[unitCount].lenom := unitTypes[i].lenom;
       Game.Units[unitCount].numplayer := ArmeeEntries[i].NumArmee; // 1 pour attaquant, 2 pour défenseur
       Game.Units[unitCount].Force := UnitTypes[i].forceInitiale;
+       Game.Units[unitCount].Forcedmg := UnitTypes[i].forceDem;
       Game.Units[unitCount].DistCombatMax := UnitTypes[i].distanceCombatMaxi;
       Game.Units[unitCount].DistCombatMin := UnitTypes[i].distanceCombatMini;
       Game.Units[unitCount].EtatUnite := 1; // Entière
