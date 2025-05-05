@@ -266,7 +266,18 @@ var
   neighborHex: Integer;
   humanUnitCount: Integer;
   specialUnitForce: Integer;
+  wallOrGateText: string;
+  hasWallOrGateText: string;
+  isInCastleText: string;
+  humanUnitTypes: set of Byte;
 begin
+  // Débogage sans IfThen
+  if wallOrGateAttacked then
+    wallOrGateText := 'True'
+  else
+    wallOrGateText := 'False';
+  WriteLn('DEBUG: ExecuteCloseCombat appelé - TargetID: ', targetID, ', WallOrGateAttacked: ', wallOrGateText);
+
   SetLength(validAttackers, 0);
   for i := 0 to High(attackerIDs) do
   begin
@@ -274,18 +285,26 @@ begin
     begin
       // Exclure les unités ayant déjà attaqué
       if Game.Units[attackerIDs[i]].HasAttacked then
+      begin
+        WriteLn('DEBUG: Unité attaquante ', attackerIDs[i], ' a déjà attaqué, ignorée');
         Continue;
+      end;
       // Exclure les trébuchets et béliers si un mur ou une grille a été attaqué
       if wallOrGateAttacked and
          ((Game.Units[attackerIDs[i]].TypeUnite.lenom = 'trebuchet') or (Game.Units[attackerIDs[i]].TypeUnite.lenom = 'belier')) then
+      begin
+        WriteLn('DEBUG: Unité attaquante ', attackerIDs[i], ' est un trébuchet/bélier et mur/grille attaqué, ignorée');
         Continue;
+      end;
       SetLength(validAttackers, Length(validAttackers) + 1);
       validAttackers[High(validAttackers)] := attackerIDs[i];
+      WriteLn('DEBUG: Unité attaquante ajoutée à validAttackers - ID: ', attackerIDs[i], ', Type: ', Game.Units[attackerIDs[i]].TypeUnite.lenom);
     end;
   end;
 
   if Length(validAttackers) = 0 then
   begin
+    WriteLn('DEBUG: Aucun attaquant valide, sortie');
     DisplayCombatMessage('Combat rapproché : Aucun attaquant valide');
     Exit;
   end;
@@ -298,6 +317,13 @@ begin
     hasLieutenantOrChef := False;
     specialUnitForce := 0;
     attackerHex := Game.Units[validAttackers[i]].HexagoneActuel;
+    WriteLn('DEBUG: Calcul force attaquant - ID: ', validAttackers[i], ', Type: ', Game.Units[validAttackers[i]].TypeUnite.lenom, ', Hexagone: ', attackerHex);
+
+    // Déterminer les types d'unités humaines en fonction du joueur
+    if Game.Units[validAttackers[i]].numplayer = 1 then
+      humanUnitTypes := [1, 2, 3] // Attaquant: Infanterie, Cavalerie, Archer
+    else
+      humanUnitTypes := [10, 11, 12]; // Défenseur: Infanterie, Cavalerie, Archer
 
     // Compter le nombre d'unités humaines sur la même case pour le bonus du lieutenant/chef milicien
     humanUnitCount := 0;
@@ -306,11 +332,12 @@ begin
       if (Game.Units[j].visible) and
          (Game.Units[j].HexagoneActuel = attackerHex) and
          (Game.Units[j].numplayer = Game.Units[validAttackers[i]].numplayer) and
-         (Game.Units[j].TypeUnite.Id in [1, 2, 3]) then // Infanterie, Cavalerie, Archer
+         (Game.Units[j].TypeUnite.Id in humanUnitTypes) then
       begin
         Inc(humanUnitCount);
       end;
     end;
+    WriteLn('DEBUG: Nombre d''unités humaines sur hexagone ', attackerHex, ': ', humanUnitCount);
 
     // Vérifier la présence d'un comte ou duc sur la même case ou les cases voisines
     for j := 1 to MAX_UNITS do
@@ -324,12 +351,14 @@ begin
         begin
           hasComteOrDuc := True;
           specialUnitForce := specialUnitForce + Game.Units[j].Force;
+          WriteLn('DEBUG: Comte/Duc trouvé sur la même case - ID: ', j, ', Force ajoutée: ', Game.Units[j].Force);
         end
         // Cases voisines
         else if IsHexNeighbor(Game.Units[j].HexagoneActuel, attackerHex) then
         begin
           hasComteOrDuc := True;
           specialUnitForce := specialUnitForce + Game.Units[j].Force;
+          WriteLn('DEBUG: Comte/Duc trouvé sur case voisine - ID: ', j, ', Hexagone: ', Game.Units[j].HexagoneActuel, ', Force ajoutée: ', Game.Units[j].Force);
         end;
       end;
     end;
@@ -345,19 +374,23 @@ begin
       begin
         hasLieutenantOrChef := True;
         specialUnitForce := specialUnitForce + Game.Units[j].Force;
+        WriteLn('DEBUG: Lieutenant/Chef milicien trouvé - ID: ', j, ', Force ajoutée: ', Game.Units[j].Force);
       end;
     end;
 
     // Appliquer le bonus le plus élevé pour les attaquants
-    if (Game.Units[validAttackers[i]].TypeUnite.Id in [1, 2, 3]) and (hasComteOrDuc or hasLieutenantOrChef) then
+    if (Game.Units[validAttackers[i]].TypeUnite.Id in humanUnitTypes) and (hasComteOrDuc or hasLieutenantOrChef) then
     begin
       attackerForce := attackerForce + (Game.Units[validAttackers[i]].Force * 2) + specialUnitForce;
+      WriteLn('DEBUG: Bonus appliqué à attaquant ', validAttackers[i], ' (unité humaine) - Force de base: ', Game.Units[validAttackers[i]].Force, ', Force après bonus: ', (Game.Units[validAttackers[i]].Force * 2), ', SpecialUnitForce: ', specialUnitForce);
     end
     else
     begin
       attackerForce := attackerForce + Game.Units[validAttackers[i]].Force;
+      WriteLn('DEBUG: Pas de bonus pour attaquant ', validAttackers[i], ' - Force: ', Game.Units[validAttackers[i]].Force);
     end;
   end;
+  WriteLn('DEBUG: Force totale des attaquants: ', attackerForce);
 
   // Calculer la force du défenseur avec bonus
   defenderForce := Game.Units[targetID].Force;
@@ -365,6 +398,13 @@ begin
   specialUnitID := -1;
   specialUnitForce := 0;
   attackerHex := Game.Units[targetID].HexagoneActuel;
+  WriteLn('DEBUG: Calcul force défenseur - ID: ', targetID, ', Type: ', Game.Units[targetID].TypeUnite.lenom, ', Hexagone: ', attackerHex, ', Force de base: ', defenderForce);
+
+  // Déterminer les types d'unités humaines pour le défenseur
+  if Game.Units[targetID].numplayer = 1 then
+    humanUnitTypes := [1, 2, 3] // Attaquant: Infanterie, Cavalerie, Archer
+  else
+    humanUnitTypes := [10, 11, 12]; // Défenseur: Infanterie, Cavalerie, Archer
 
   // Compter le nombre d'unités humaines sur la même case pour le bonus du lieutenant/chef milicien
   humanUnitCount := 0;
@@ -373,11 +413,12 @@ begin
     if (Game.Units[j].visible) and
        (Game.Units[j].HexagoneActuel = attackerHex) and
        (Game.Units[j].numplayer = Game.Units[targetID].numplayer) and
-       (Game.Units[j].TypeUnite.Id in [1, 2, 3]) then // Infanterie, Cavalerie, Archer
+       (Game.Units[j].TypeUnite.Id in humanUnitTypes) then
     begin
       Inc(humanUnitCount);
     end;
   end;
+  WriteLn('DEBUG: Nombre d''unités humaines sur hexagone ', attackerHex, ': ', humanUnitCount);
 
   // Vérifier la présence d'un comte ou duc sur la même case ou les cases voisines
   hasComteOrDuc := False;
@@ -392,12 +433,14 @@ begin
       begin
         hasComteOrDuc := True;
         specialUnitForce := specialUnitForce + Game.Units[j].Force;
+        WriteLn('DEBUG: Comte/Duc trouvé pour défenseur sur la même case - ID: ', j, ', Force ajoutée: ', Game.Units[j].Force);
       end
       // Cases voisines
       else if IsHexNeighbor(Game.Units[j].HexagoneActuel, attackerHex) then
       begin
         hasComteOrDuc := True;
         specialUnitForce := specialUnitForce + Game.Units[j].Force;
+        WriteLn('DEBUG: Comte/Duc trouvé pour défenseur sur case voisine - ID: ', j, ', Hexagone: ', Game.Units[j].HexagoneActuel, ', Force ajoutée: ', Game.Units[j].Force);
       end;
     end;
   end;
@@ -414,69 +457,90 @@ begin
     begin
       hasLieutenantOrChef := True;
       specialUnitForce := specialUnitForce + Game.Units[j].Force;
+      WriteLn('DEBUG: Lieutenant/Chef milicien trouvé pour défenseur - ID: ', j, ', Force ajoutée: ', Game.Units[j].Force);
     end;
   end;
 
   // Vérifier la présence d'un mur et si l'hexagone est un château
   hasWallOrGate := (Hexagons[Game.CombatOrders[0].TargetHexID].HasWall) or (Hexagons[Game.CombatOrders[0].TargetHexID].Objet = 3000);
   isInCastle := Hexagons[Game.CombatOrders[0].TargetHexID].IsCastle;
+  if hasWallOrGate then
+    hasWallOrGateText := 'True'
+  else
+    hasWallOrGateText := 'False';
+  if isInCastle then
+    isInCastleText := 'True'
+  else
+    isInCastleText := 'False';
+  WriteLn('DEBUG: Défenseur - HasWallOrGate: ', hasWallOrGateText, ', IsInCastle: ', isInCastleText);
 
   // Appliquer les bonus pour le défenseur (uniquement si unité humaine)
-  if Game.Units[targetID].TypeUnite.Id in [1, 2, 3] then // Infanterie, Cavalerie, Archer
+  if Game.Units[targetID].TypeUnite.Id in humanUnitTypes then
   begin
     // Cas 3 : Mur/grille + unité spéciale + château → triplement
     if hasWallOrGate and isInCastle and (hasComteOrDuc or hasLieutenantOrChef) then
     begin
       defenderForce := Game.Units[targetID].Force * 3;
       defenderForce := defenderForce + specialUnitForce;
+      WriteLn('DEBUG: Bonus Cas 3 appliqué à défenseur (unité humaine) - Force de base: ', Game.Units[targetID].Force, ', Force après triplement: ', defenderForce);
     end
     // Cas 1 : Pas de mur/grille, mais unité spéciale présente → doublage
     else if (hasComteOrDuc or hasLieutenantOrChef) and not (hasWallOrGate and isInCastle) then
     begin
       defenderForce := Game.Units[targetID].Force * 2;
       defenderForce := defenderForce + specialUnitForce;
+      WriteLn('DEBUG: Bonus Cas 1 appliqué à défenseur (unité humaine) - Force de base: ', Game.Units[targetID].Force, ', Force après doublage: ', defenderForce);
     end
     // Cas 2 : Mur/grille + château, pas d'unité spéciale → doublage
     else if hasWallOrGate and isInCastle and not (hasComteOrDuc or hasLieutenantOrChef) then
     begin
       defenderForce := Game.Units[targetID].Force * 2;
+      WriteLn('DEBUG: Bonus Cas 2 appliqué à défenseur (unité humaine) - Force de base: ', Game.Units[targetID].Force, ', Force après doublage: ', defenderForce);
     end;
+  end
+  else
+  begin
+    WriteLn('DEBUG: Défenseur ', targetID, ' n''est pas une unité humaine, pas de bonus - Force: ', defenderForce);
   end;
+  WriteLn('DEBUG: Force totale du défenseur: ', defenderForce);
 
-  // Le reste de la fonction (calcul du rapport et résultats des combats) reste inchangé
- ratio := attackerForce / defenderForce;
+  // Calculer le rapport et déterminer le résultat
+  ratio := attackerForce / defenderForce;
+  WriteLn('DEBUG: Rapport de force (attackerForce / defenderForce): ', ratio:0:3);
 
-if ratio >= 1 then
-begin
-  intRatio := Trunc(ratio);
-  if intRatio <= 1 then
-    row := 4
-  else if intRatio <= 2 then
-    row := 5
-  else if intRatio <= 3 then
-    row := 6
-  else if intRatio <= 4 then
-    row := 7
-  else if intRatio <= 5 then
-    row := 8
-  else if intRatio <= 6 then
-    row := 9
+  if ratio >= 1 then
+  begin
+    intRatio := Trunc(ratio);
+    if intRatio <= 1 then
+      row := 4
+    else if intRatio <= 2 then
+      row := 5
+    else if intRatio <= 3 then
+      row := 6
+    else if intRatio <= 4 then
+      row := 7
+    else if intRatio <= 5 then
+      row := 8
+    else if intRatio <= 6 then
+      row := 9
+    else
+      row := 9; // Pour les rapports > 6
+  end
   else
-    row := 9; // Pour les rapports > 6
-end
-else
-begin
-  if ratio <= 0.25 then
-    row := 1
-  else if ratio <= 0.333 then
-    row := 2
-  else if ratio <= 0.5 then
-    row := 3
-  else
-    row := 4; // Rapport <= 1
-end;
+  begin
+    if ratio <= 0.25 then
+      row := 1
+    else if ratio <= 0.333 then
+      row := 2
+    else if ratio <= 0.5 then
+      row := 3
+    else
+      row := 4; // Rapport <= 1
+  end;
+  WriteLn('DEBUG: Ligne déterminée pour table des résultats: ', row);
 
   diceRoll := Random(6) + 1;
+  WriteLn('DEBUG: Jet de dé: ', diceRoll);
 
   case row of
     1: // Rapport ≤ 1/4
@@ -492,7 +556,7 @@ end;
       case diceRoll of
         1: ApplyDR(validAttackers, targetID, attackerForce, defenderForce, row, diceRoll);
         2..4: ApplyAR(validAttackers, attackerForce, defenderForce, row, diceRoll);
-       5..6: ApplyAM(validAttackers, attackerForce, defenderForce, row, diceRoll);
+        5..6: ApplyAM(validAttackers, attackerForce, defenderForce, row, diceRoll);
       end;
     end;
     3: // Rapport ≤ 1/2
@@ -507,7 +571,7 @@ end;
       case diceRoll of
         1..3: ApplyDR(validAttackers, targetID, attackerForce, defenderForce, row, diceRoll);
         4..6: ApplyAR(validAttackers, attackerForce, defenderForce, row, diceRoll);
-       end;
+      end;
     end;
     5: // Rapport ≤ 2/1
     begin
@@ -551,6 +615,7 @@ end;
       end;
     end;
   end;
+  WriteLn('DEBUG: Résultat du combat appliqué');
 
   DisplayCombatMessage('Combat terminé');
 end;
@@ -1181,27 +1246,37 @@ begin
   // Réinitialiser les ordres de combat
   SetLength(Game.CombatOrders, 0);
 end;
-/// Remplacer la procédure SelectCombatTargetAndAttackers par :
+
 procedure SelectCombatTargetAndAttackers(numplayer: Integer);
 var
   mousePos: TVector2;
   unitIndex, hexID, i: Integer;
-  alreadyAttacker: Boolean;
+  alreadyAttacker, isCatapult: Boolean;
   targetPlayer: Integer;
-  numTrebuchets, numBeliers: Integer;
+  distance: Integer;
+  isCatapultText: string;
+  numTrebuchets: Integer;  // Déclaration de numTrebuchets
+  numBeliers: Integer;     // Déclaration de numBeliers
 begin
+  HandleCommonInput(numplayer, False);
   mousePos := GetScreenToWorld2D(GetMousePosition(), camera);
+  //WriteLn('DEBUG: SelectCombatTargetAndAttackers - Numplayer: ', numplayer, ', MousePos: (', mousePos.x:0:2, ', ', mousePos.y:0:2, ')');
 
   // Déterminer le joueur cible (inversé par rapport à numplayer)
   targetPlayer := 3 - numplayer;
+  //WriteLn('DEBUG: Joueur cible: ', targetPlayer);
 
   // Clic droit : Sélectionner une cible (hexagone et unité si présente)
   if IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) then
   begin
     // Détecter l'hexagone cliqué
     hexID := GetHexagonAtPosition(mousePos.x, mousePos.y);
+    //WriteLn('DEBUG: Clic droit - Hexagone détecté: ', hexID);
     if hexID < 1 then
+    begin
+      WriteLn('DEBUG: Hexagone invalide, sortie');
       Exit;
+    end;
 
     // Réinitialiser les ordres de combat
     if Length(Game.CombatOrders) = 0 then
@@ -1209,6 +1284,7 @@ begin
     Game.CombatOrders[0].TargetHexID := hexID;
     Game.CombatOrders[0].TargetID := -1; // Par défaut, pas d'unité
     SetLength(Game.CombatOrders[0].AttackerIDs, 0); // Réinitialiser les attaquants
+    WriteLn('DEBUG: Ordres de combat réinitialisés - TargetHexID: ', Game.CombatOrders[0].TargetHexID);
 
     // Vérifier si une unité ennemie est présente sur cet hexagone
     for unitIndex := 1 to MAX_UNITS do
@@ -1219,15 +1295,22 @@ begin
         Continue;
 
       Game.CombatOrders[0].TargetID := unitIndex;
+      WriteLn('DEBUG: Unité cible trouvée - ID: ', unitIndex, ', Type: ', Game.Units[unitIndex].TypeUnite.lenom, ', Hexagone: ', hexID);
       AddMessage('Unité cible ' + IntToStr(unitIndex) + ' sélectionnée sur hexagone ' + IntToStr(hexID));
       Exit;
     end;
 
-    // Si aucune unité n'est présente, vérifier si c'est un mur ou une grille
-    if (Hexagons[hexID].HasWall) or (Hexagons[hexID].Objet = 3000) then
-      AddMessage('Hexagone cible ' + IntToStr(hexID) + ' sélectionné (mur/grille)')
+    // Si aucune unité n'est présente, afficher un message pour l'hexagone
+    if (Hexagons[hexID].IsCastle) or (Hexagons[hexID].Objet = 3000) then
+    begin
+      WriteLn('DEBUG: Hexagone cible avec mur/grille - ID: ', hexID);
+      AddMessage('Hexagone cible ' + IntToStr(hexID) + ' sélectionné (mur/grille)');
+    end
     else
+    begin
+      WriteLn('DEBUG: Hexagone cible sélectionné - ID: ', hexID);
       AddMessage('Hexagone cible ' + IntToStr(hexID) + ' sélectionné');
+    end;
     Exit;
   end;
 
@@ -1236,6 +1319,7 @@ begin
   begin
     if (Length(Game.CombatOrders) = 0) or (Game.CombatOrders[0].TargetHexID < 1) then
     begin
+      WriteLn('DEBUG: Clic gauche - Aucune cible sélectionnée, sortie');
       AddMessage('Sélectionnez une cible avant d''ajouter un attaquant.');
       Exit;
     end;
@@ -1249,55 +1333,74 @@ begin
       if not (Game.Units[unitIndex].numplayer = numplayer) or Game.Units[unitIndex].HasAttacked then
         Continue;
 
+      WriteLn('DEBUG: Clic gauche - Unité potentielle attaquante trouvée - ID: ', unitIndex, ', Type: ', Game.Units[unitIndex].TypeUnite.lenom, ', Hexagone: ', Game.Units[unitIndex].HexagoneActuel);
+
       // Vérifier si l'attaquant est déjà dans la liste
       alreadyAttacker := False;
       for i := 0 to High(Game.CombatOrders[0].AttackerIDs) do
         if Game.CombatOrders[0].AttackerIDs[i] = unitIndex then
         begin
           alreadyAttacker := True;
+          WriteLn('DEBUG: Unité ', unitIndex, ' déjà dans la liste des attaquants');
           Break;
         end;
       if alreadyAttacker then
         Continue;
 
+      // Déterminer si l'unité est une catapulte (trébuchet : ID 6 ou 15)
+      isCatapult := (Game.Units[unitIndex].TypeUnite.Id in [6, 15]);
+      if isCatapult then
+        isCatapultText := 'Oui'
+      else
+        isCatapultText := 'Non';
+      WriteLn('DEBUG: Unité ', unitIndex, ' - Est une catapulte: ', isCatapultText);
+
       // Vérifier la portée
-      // Si une unité ennemie est ciblée (TargetID >= 1), vérifier la portée par rapport à l'hexagone de cette unité
       if Game.CombatOrders[0].TargetID >= 1 then
       begin
+        // Si une unité est ciblée, vérifier la portée par rapport à l'hexagone de l'unité cible
         if not IsInRangeBFS(Game.Units[unitIndex],
                             Game.Units[Game.CombatOrders[0].TargetID].HexagoneActuel,
                             Vector2Create(Hexagons[Game.Units[Game.CombatOrders[0].TargetID].HexagoneActuel].CenterX,
                                           Hexagons[Game.Units[Game.CombatOrders[0].TargetID].HexagoneActuel].CenterY),
                             Game.Units[unitIndex].DistCombatMax) then
         begin
+          WriteLn('DEBUG: Unité ', unitIndex, ' hors de portée de l''unité cible ', Game.CombatOrders[0].TargetID);
           AddMessage('Attaquant id ' + IntToStr(unitIndex) + ' hors de portée');
           Continue;
         end;
+        WriteLn('DEBUG: Unité ', unitIndex, ' à portée de l''unité cible ', Game.CombatOrders[0].TargetID);
       end
       else
-      // Sinon, vérifier la portée par rapport à l'hexagone cible (mur/grille)
       begin
+        // Sinon, vérifier la portée par rapport à l'hexagone cible (mur/grille)
         if not IsInRangeBFS(Game.Units[unitIndex],
                             Game.CombatOrders[0].TargetHexID,
                             Vector2Create(Hexagons[Game.CombatOrders[0].TargetHexID].CenterX,
                                           Hexagons[Game.CombatOrders[0].TargetHexID].CenterY),
                             Game.Units[unitIndex].DistCombatMax) then
         begin
+          WriteLn('DEBUG: Unité ', unitIndex, ' hors de portée de l''hexagone cible ', Game.CombatOrders[0].TargetHexID);
           AddMessage('Attaquant id ' + IntToStr(unitIndex) + ' hors de portée');
           Continue;
         end;
+        WriteLn('DEBUG: Unité ', unitIndex, ' à portée de l''hexagone cible ', Game.CombatOrders[0].TargetHexID);
       end;
 
       // Vérifier la limite de 10 attaquants
       if Length(Game.CombatOrders[0].AttackerIDs) >= 10 then
       begin
+        WriteLn('DEBUG: Limite de 10 attaquants atteinte');
         AddMessage('Limite de 10 attaquants atteinte');
         Exit;
       end;
 
       // Vérifier si l'unité est un bélier et si la cible est une grille
       if (Game.Units[unitIndex].TypeUnite.lenom = 'belier') and (Hexagons[Game.CombatOrders[0].TargetHexID].Objet <> 3000) then
+      begin
+        WriteLn('DEBUG: Unité ', unitIndex, ' est un bélier, mais cible non-grille, ignorée');
         Continue;
+      end;
 
       // Compter les trébuchets et béliers déjà sélectionnés
       numTrebuchets := 0;
@@ -1309,16 +1412,24 @@ begin
         else if Game.Units[Game.CombatOrders[0].AttackerIDs[i]].TypeUnite.lenom = 'belier' then
           Inc(numBeliers);
       end;
+      WriteLn('DEBUG: Nombre de trébuchets déjà sélectionnés: ', numTrebuchets, ', Nombre de béliers: ', numBeliers);
 
       // Vérifier les limites spécifiques
       if (Game.Units[unitIndex].TypeUnite.lenom = 'trebuchet') and (numTrebuchets >= 3) then
+      begin
+        WriteLn('DEBUG: Limite de 3 trébuchets atteinte, unité ', unitIndex, ' ignorée');
         Continue;
+      end;
       if (Game.Units[unitIndex].TypeUnite.lenom = 'belier') and (numBeliers >= 1) then
+      begin
+        WriteLn('DEBUG: Limite de 1 bélier atteinte, unité ', unitIndex, ' ignorée');
         Continue;
+      end;
 
       // Ajouter l'attaquant
       SetLength(Game.CombatOrders[0].AttackerIDs, Length(Game.CombatOrders[0].AttackerIDs) + 1);
       Game.CombatOrders[0].AttackerIDs[High(Game.CombatOrders[0].AttackerIDs)] := unitIndex;
+      WriteLn('DEBUG: Unité attaquante ajoutée - ID: ', unitIndex, ', Type: ', Game.Units[unitIndex].TypeUnite.lenom);
       AddMessage('Unité attaquante ' + IntToStr(unitIndex) + ' ajoutée');
       Exit;
     end;
