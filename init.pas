@@ -77,9 +77,10 @@ end;
     latexture: TTexture2D;   // Le dessin est stocké
     limage: TImage;          // Nom du fichier normal
     Force: Integer;          // Force de combat
+    Forcedmg: Integer;       // force dmg
     DistCombatMax: Integer;     // Distance en hexagone au combat max
     DistCombatMin: Integer;     // Distance en hexagone au combat mini
-    EtatUnite: Integer;      // Entière ou 1/2 force
+    EtatUnite: Integer;      // Entière 1/2 force ou kill
     TypeUnite: TtpUnite;     // Type d'unité
     visible: Boolean;        // Suis-je caché
     HexagoneActuel: Integer; // Sur quel terrain, je suis
@@ -119,14 +120,11 @@ end;
   gsAttackerMoveOrders,
   gsAttackerMoveExecute,
   gsAttackerBattleOrders,
-  gsAttackerBattleExecute,
   gsCheckVictoryAttacker,
   gsDefenderMoveOrders,
   gsDefenderMoveExecute,
   gsDefenderBattleOrders,
-  gsDefenderBattleExecute,
   gsCheckVictoryDefender,
-  gsplayerturn,
   gsGameOver
 );
 
@@ -223,6 +221,8 @@ end;
     HasWall: Boolean;     // Présence d'un mur adjacent (basé sur Objet entre 3000 et 4000)
     HasRiver:boolean;     //
     IsCastle: Boolean;    // est ce une case de type chateau
+    IsDamaged: Boolean; // mur ou grille
+    IsAttacked: Boolean;
   end;
 
 
@@ -437,6 +437,7 @@ begin
       Game.Units[unitCount].lenom := unitTypes[i].lenom;
       Game.Units[unitCount].numplayer := ArmeeEntries[i].NumArmee; // 1 pour attaquant, 2 pour défenseur
       Game.Units[unitCount].Force := UnitTypes[i].forceInitiale;
+       Game.Units[unitCount].Forcedmg := UnitTypes[i].forceDem;
       Game.Units[unitCount].DistCombatMax := UnitTypes[i].distanceCombatMaxi;
       Game.Units[unitCount].DistCombatMin := UnitTypes[i].distanceCombatMini;
       Game.Units[unitCount].EtatUnite := 1; // Entière
@@ -942,7 +943,8 @@ begin
         Hexagons[i].IsCastle := (values[36] = 'oui'); // Initialiser à False, sera mis à jour après
         Hexagons[i].HasWall := False; // Initialiser à False, sera mis à jour après
         Hexagons[i].HasRiver := False; // Initialiser à False, sera mis à jour après
-
+        Hexagons[i].IsDamaged := False; // Initialiser l’état endommagé à False
+        Hexagons[i].IsAttacked := False; // Initialiser l’état attaqué à False
       end;
     end;
   finally
