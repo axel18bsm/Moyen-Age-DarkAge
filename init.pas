@@ -13,7 +13,11 @@ const
   MAX_UNITS = 68; // Nombre total d'unités (40 pour l'attaquant + 28 pour le défenseur)
   CHEMIN_SOLDAT1='resources/soldat/player1/';
   CHEMIN_SOLDAT2='resources/soldat/player2/';
-
+type
+  TTupleBooleanString = record
+    Success: Boolean;
+    Message: String;
+  end;
 type
   TCombatOrder = record
     TargetID: Integer;      // ID de l'unité cible
@@ -74,6 +78,7 @@ end;
     Fileimagestr:string;      // facilite la vie !!
     Fileimage: PChar;        // Chemin de mon dessin normal
     FileimageAbime: PChar;   // Chemin de mon dessin abimé
+    FileimageAbimeStr: string; // Nouveau champ pour stocker le chemin abîmé
     latexture: TTexture2D;   // Le dessin est stocké
     limage: TImage;          // Nom du fichier normal
     Force: Integer;          // Force de combat
@@ -183,6 +188,8 @@ end;
     CurrentUnitIndex: Integer; // Index de l'unité actuellement en cours de traitement dans le cycle
     PlayerTurnProcessed: Boolean; // Indique si les traitements du tour ont été effectués
     CombatOrders: array of TCombatOrder; // Ordres de combat en cours
+    VictoryMessage: String;           // Message de victoire
+    VictoryHexOccupiedSince: Integer; // Tour où une unité rouge est arrivée sur une case de victoire
 
 
   end;
@@ -423,21 +430,27 @@ var
 begin
   unitCount := 0;
 
-  // Charger une image par défaut robuste
+  // Charger une image par défaut
+  defaultImage := LoadImage('resources/soldat/default.png'); // À remplacer par un fichier réel
+  if defaultImage.data = nil then
+    WriteLn('ERREUR: InitializePlayerUnits - Impossible de charger l''image par défaut');
 
   // Initialiser toutes les unités dans l'ordre (attaquant puis défenseur)
   for i := 1 to 17 do // 17 entrées dans ArmeeEntries
   begin
+    // Vérifier FichierD pour débogage
+    WriteLn('DEBUG: InitializePlayerUnits - Type unité ', i, ', FichierD=', ArmeeEntries[i].FichierD);
+
     // Créer le nombre d'unités spécifié
     for k := 1 to ArmeeEntries[i].Nombre do
     begin
       unitCount := unitCount + 1;
-      Game.Units[unitCount].Id := unitCount; // ID unique pour chaque unité
+      Game.Units[unitCount].Id := unitCount;
       Game.Units[unitCount].TypeUnite := UnitTypes[i];
       Game.Units[unitCount].lenom := unitTypes[i].lenom;
       Game.Units[unitCount].numplayer := ArmeeEntries[i].NumArmee; // 1 pour attaquant, 2 pour défenseur
       Game.Units[unitCount].Force := UnitTypes[i].forceInitiale;
-       Game.Units[unitCount].Forcedmg := UnitTypes[i].forceDem;
+      Game.Units[unitCount].Forcedmg := UnitTypes[i].forceDem;
       Game.Units[unitCount].DistCombatMax := UnitTypes[i].distanceCombatMaxi;
       Game.Units[unitCount].DistCombatMin := UnitTypes[i].distanceCombatMini;
       Game.Units[unitCount].EtatUnite := 1; // Entière
@@ -451,7 +464,6 @@ begin
       Game.Units[unitCount].hasStopped := False;
       Game.Units[unitCount].hasMoved := False;
       Game.Units[unitCount].MustMove := False;
-      // Initialiser les champs supplémentaires
       Game.Units[unitCount].BtnPerim := RectangleCreate(0, 0, 0, 0);
       Game.Units[unitCount].PositionActuelle := Vector2Create(0, 0);
       Game.Units[unitCount].positionInitiale := Vector2Create(0, 0);
@@ -476,6 +488,7 @@ begin
       end;
       Game.Units[unitCount].Fileimagestr := Game.Units[unitCount].Fileimagestr + ArmeeEntries[i].FichierE; // Chemin de l'image normale
       Game.Units[unitCount].Fileimage := PChar(Game.Units[unitCount].Fileimagestr);
+      WriteLn('DEBUG: InitializePlayerUnits - Unité ', unitCount, ', Image normale : ', Game.Units[unitCount].Fileimage);
 
       // Construire le chemin complet pour l'image abîmée
       if Game.Units[unitCount].numplayer = 1 then
@@ -486,21 +499,25 @@ begin
       begin
         filePathAbime := CHEMIN_SOLDAT2 + ArmeeEntries[i].FichierD;
       end;
-      Game.Units[unitCount].FileimageAbime := PChar(filePathAbime);
+      Game.Units[unitCount].FileimageAbimeStr := filePathAbime; // Stocker une copie
+      Game.Units[unitCount].FileimageAbime := PChar(Game.Units[unitCount].FileimageAbimeStr);
+      WriteLn('DEBUG: InitializePlayerUnits - Unité ', unitCount, ', Image abîmée : ', Game.Units[unitCount].FileimageAbimeStr);
+
+
 
       // Charger l'image et la texture
       Game.Units[unitCount].limage := LoadImage(Game.Units[unitCount].Fileimage);
       if Game.Units[unitCount].limage.data = nil then
       begin
         WriteLn('Erreur : Impossible de charger l''image ', Game.Units[unitCount].Fileimage, ' pour l''unité ', unitCount);
-        Game.Units[unitCount].limage := defaultImage; // Utiliser l'image par défaut
+        Game.Units[unitCount].limage := defaultImage;
       end;
 
       Game.Units[unitCount].latexture := LoadTextureFromImage(Game.Units[unitCount].limage);
       if Game.Units[unitCount].latexture.id = 0 then
       begin
         WriteLn('Erreur : Impossible de charger la texture pour l''unité ', unitCount);
-        Game.Units[unitCount].latexture := LoadTextureFromImage(defaultImage); // Utiliser la texture par défaut
+        Game.Units[unitCount].latexture := LoadTextureFromImage(defaultImage);
       end;
 
       // Calculer la moitié de la largeur et de la hauteur de la texture
@@ -514,8 +531,9 @@ begin
     end;
   end;
 
-  // Les positions initiales des unités défenseurs ont été supprimées
-  // Elles seront gérées dans gsSetupDefender
+  // Décharger l'image par défaut
+  if defaultImage.data <> nil then
+    UnloadImage(defaultImage);
 end;
 
 

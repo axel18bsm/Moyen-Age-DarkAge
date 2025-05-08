@@ -5,6 +5,9 @@ program moyenage;
 uses
   raylib, strings, init, UnitProcFunc, GameManager;
 
+
+
+
 begin
   // Charger l'image principale (newlacarte.png)
   Pchartxt := 'resources/newlacarte.png';

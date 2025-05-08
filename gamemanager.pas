@@ -586,14 +586,27 @@ end;
 
 
 procedure HandleCheckVictoryDefenderUpdate;
+var
+  result: TTupleBooleanString;
 begin
   HandleCommonInput(0, False);
-
-  // Vérifier si le tour maximum est atteint
-  if Game.CurrentTurn = MAX_TOURS then
+  result := CheckVictory(2);
+  WriteLn('DEBUG: CheckVictory(2) appelé, Success=', result.Success);
+  if result.Success then
   begin
+    Game.VictoryMessage := result.Message;
     Game.CurrentState := gsGameOver;
-    AddMessage('Les mercenaires n''ont plus d''argent, les attaquants ont perdu');
+    AddMessage('Victoire du défenseur : ' + result.Message);
+    WriteLn('DEBUG: Transition vers gsGameOver, Message=', result.Message);
+  end
+  else
+  begin
+    Inc(Game.CurrentTurn);
+    Game.CurrentState := gsAttackerMoveOrders;
+    Game.CurrentPlayer := Game.Attacker;
+    Game.PlayerTurnProcessed := False;
+    AddMessage('Déplacements des unités attaquantes');
+    WriteLn('DEBUG: Transition vers gsAttackerMoveOrders, Nouveau tour=', Game.CurrentTurn);
   end;
 end;
 
@@ -614,8 +627,27 @@ begin
   end;
 end;
 procedure HandleCheckVictoryAttackerUpdate;
+var
+  result: TTupleBooleanString;
 begin
   HandleCommonInput(0, False);
+  result := CheckVictory(1);
+  WriteLn('DEBUG: CheckVictory(1) appelé, Success=', result.Success);
+  if result.Success then
+  begin
+    Game.VictoryMessage := result.Message;
+    Game.CurrentState := gsGameOver;
+    AddMessage('Victoire de l''attaquant : ' + result.Message);
+    WriteLn('DEBUG: Transition vers gsGameOver, Message=', result.Message);
+  end
+  else
+  begin
+    Game.CurrentState := gsDefenderMoveOrders;
+    Game.CurrentPlayer := Game.Defender;
+    Game.PlayerTurnProcessed := False;
+    AddMessage('Déplacements des unités défenseurs');
+    WriteLn('DEBUG: Transition vers gsDefenderMoveOrders');
+  end;
 end;
 
 procedure HandleAttackerBattleOrdersUpdate;
@@ -1312,30 +1344,6 @@ begin
       HandleBattlePhaseButtons(2, buttonY);
     end;
 
-    gsCheckVictoryAttacker:
-    begin
-      buttonY := baseY - BUTTON_HEIGHT;
-      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT), 'Suivant') = 1 then
-      begin
-        Game.CurrentState := gsDefenderMoveOrders;
-        Game.CurrentPlayer := Game.Defender;
-        Game.PlayerTurnProcessed := False; // Réinitialiser pour le prochain tour
-        AddMessage('Déplacements des unités défenseurs');
-      end;
-    end;
-
-    gsCheckVictoryDefender:
-    begin
-      buttonY := baseY - BUTTON_HEIGHT;
-      if GuiButton(RectangleCreate(screenWidth - rightBorderWidth + 10, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT), 'Suivant') = 1 then
-      begin
-        Game.CurrentState := gsAttackerMoveOrders;
-        Game.CurrentPlayer := Game.Attacker;
-        Game.PlayerTurnProcessed := False; // Réinitialiser pour le prochain tour
-        AddMessage('Déplacements des unités attaquantes');
-        Inc(Game.CurrentTurn);
-      end;
-    end;
 
     gsGameOver:
     begin
@@ -2503,6 +2511,8 @@ end;
 
    // Initialiser CurrentUnitIndex
    Game.CurrentUnitIndex := 1;
+   Game.VictoryMessage := '';
+  Game.VictoryHexOccupiedSince := -1;
 
    // Charger l'image du splash screen
    Game.SplashScreenImage := LoadTexture('resources/image/intromoyenage.png');

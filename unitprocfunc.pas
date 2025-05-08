@@ -67,15 +67,126 @@ function IsEnemyOnHex(hexID: Integer; playerNum: Integer): Boolean;
 function IsHexNeighbor(hexID1: Integer; hexID2: Integer): Boolean;
 procedure SortAttackersByType(var attackers: array of Integer);
 function CompareUnitTypes(unit1: Integer; unit2: Integer): Integer;
+function CheckVictory(playerNum: Integer): TTupleBooleanString;
+
 
 
 
 
 
 implementation
-uses GameManager;
-// Dans la section implementation de unitprocfunc.pas, après les implémentations existantes, ajouter :
 
+uses GameManager;
+
+
+function CheckVictory(playerNum: Integer): TTupleBooleanString;
+var
+  i, j: Integer;
+  unitAlive: Boolean;
+  victoryHexFound: Boolean;
+begin
+  Result.Success := False;
+  Result.Message := '';
+
+
+    // Vérifier la mort du duc attaquant (Type ID 4)
+    WriteLn('DEBUG: Vérification victoire défenseur - Mort du duc attaquant (Type ID 4)');
+
+
+        if not Game.Units[28].visible or (Game.Units[28].EtatUnite = -1) then
+        begin
+          Result.Success := True;
+          Result.Message := 'Duc attaquant mort';
+          WriteLn('DEBUG: Victoire détectée - ', Result.Message);
+          Exit;
+        end;
+
+
+
+
+    // Vérifier le nombre de tours > 15
+    WriteLn('DEBUG: Vérification victoire défenseur - Nombre de tours > 15');
+    if Game.CurrentTurn > MAX_TOURS then
+    begin
+      Result.Success := True;
+      Result.Message := 'Les mercenaires n''ont plus d''argent, les attaquants ont perdu';
+      WriteLn('DEBUG: Victoire détectée - ', Result.Message);
+      Exit;
+    end
+    else
+    begin
+      WriteLn('DEBUG: Nombre de tours actuel : ', Game.CurrentTurn);
+    end;
+
+
+    // Vérifier la mort du comte défenseur (Type ID 13)
+    WriteLn('DEBUG: Vérification victoire attaquant - Mort du comte défenseur (Type ID 13)');
+
+        if not Game.Units[13].visible or (Game.Units[59].EtatUnite = -1) then
+        begin
+          Result.Success := True;
+          Result.Message := 'Comte défenseur mort';
+          WriteLn('DEBUG: Victoire détectée - ', Result.Message);
+          Exit;
+        end;
+
+
+    // Vérifier la mort de toutes les troupes du défenseur
+    WriteLn('DEBUG: Vérification victoire attaquant - Mort de toutes les troupes du défenseur');
+    unitAlive := False;
+    for i := 41 to MAX_UNITS do // Unités défenseur : 41 à 68
+    begin
+      if (Game.Units[i].numplayer = 2) and Game.Units[i].visible and (Game.Units[i].EtatUnite >= 0) then
+      begin
+        unitAlive := True;
+        WriteLn('DEBUG: Unité défenseur vivante trouvée (unité ', i, ')');
+        Break;
+      end;
+    end;
+    if not unitAlive then
+    begin
+      Result.Success := True;
+      Result.Message := 'Toutes les troupes du défenseur mortes';
+      WriteLn('DEBUG: Victoire détectée - ', Result.Message);
+      Exit;
+    end;
+
+    // Vérifier une unité rouge sur une case de victoire pendant un tour complet
+    WriteLn('DEBUG: Vérification victoire attaquant - Unité rouge sur case de victoire');
+    victoryHexFound := False;
+    for i := 1 to HexagonCount do
+    begin
+      if Hexagons[i].Objet = 10000 then // Objet Victoire
+      begin
+        for j := 1 to 40 do // Unités attaquant : 1 à 40
+        begin
+          if (Game.Units[j].HexagoneActuel = i) and (Game.Units[j].numplayer = 1) and Game.Units[j].visible then
+          begin
+            victoryHexFound := True;
+            WriteLn('DEBUG: Unité rouge trouvée sur case de victoire (hexagone ', i, ', unité ', j, ')');
+            if Game.VictoryHexOccupiedSince = Game.CurrentTurn - 1 then
+            begin
+              Result.Success := True;
+              Result.Message := 'Unité rouge sur case de victoire pendant un tour complet';
+              WriteLn('DEBUG: Victoire détectée - ', Result.Message);
+              Exit;
+            end;
+            Game.VictoryHexOccupiedSince := Game.CurrentTurn;
+            WriteLn('DEBUG: Mise à jour VictoryHexOccupiedSince : ', Game.VictoryHexOccupiedSince);
+            Break;
+          end;
+        end;
+      end;
+    end;
+    if not victoryHexFound then
+    begin
+      Game.VictoryHexOccupiedSince := -1;
+      WriteLn('DEBUG: Aucune unité rouge sur une case de victoire, réinitialisation VictoryHexOccupiedSince');
+    end;
+
+
+  WriteLn('DEBUG: Aucune victoire détectée pour le joueur ', playerNum);
+end;
 function ExecuteBelierCombat(hasBelier: Boolean; targetHexID: Integer; isGate: Boolean): Boolean;
 var
   diceRoll: Integer;
@@ -627,7 +738,6 @@ begin
   DisplayCombatMessage(Format('Combat : Attaquant recule (%d/%d, ligne %d, jet de dé %d)', [attackerForce, defenderForce, row, diceRoll]));
   for i := 0 to High(attackerIDs) do
   begin
-    if (attackerIDs[i] >= 1) and (attackerIDs[i] <= MAX_UNITS) then
       MoveUnitToHex(attackerIDs[i], FindRetreatHex(attackerIDs[i], Game.Units[attackerIDs[i]].numplayer));
   end;
 end;
@@ -761,12 +871,59 @@ end;
 
 procedure DamageUnit(unitIndex: Integer);
 var
+  newImage: TImage;
   newTexture: TTexture2D;
 begin
-  // Réduire la force de l'unité de moitié et mettre à jour son état
+
+
+  // Réduire la force de l'unité et mettre à jour son état
   Game.Units[unitIndex].Force := Game.Units[unitIndex].Forcedmg;
   Game.Units[unitIndex].EtatUnite := 0;
-  Game.Units[unitindex].limage := LoadImage(Game.Units[unitindex].FileimageAbime);
+  WriteLn('DEBUG: DamageUnit - Unité ', unitIndex, ' endommagée, nouvelle force=', Game.Units[unitIndex].Force);
+
+  // Décharger l'ancienne texture
+  if Game.Units[unitIndex].latexture.id <> 0 then
+  begin
+    UnloadTexture(Game.Units[unitIndex].latexture);
+    WriteLn('DEBUG: DamageUnit - Ancienne texture déchargée pour unité ', unitIndex);
+  end;
+
+  // Charger l'image abîmée
+  WriteLn('DEBUG: DamageUnit - Tentative de chargement de l''image abîmée : ', Game.Units[unitIndex].FileimageAbimeStr);
+  newImage := LoadImage(PChar(Game.Units[unitIndex].FileimageAbimeStr));
+  if newImage.data = nil then
+  begin
+    WriteLn('ERREUR: DamageUnit - Impossible de charger l''image abîmée ', Game.Units[unitIndex].FileimageAbimeStr, ' pour unité ', unitIndex);
+    // Charger l'image normale comme secours
+    newImage := LoadImage(Game.Units[unitIndex].Fileimage);
+    if newImage.data = nil then
+    begin
+      WriteLn('ERREUR: DamageUnit - Impossible de charger l''image normale ', Game.Units[unitIndex].Fileimage, ' pour unité ', unitIndex);
+      Exit;
+    end;
+  end;
+
+  // Charger la nouvelle texture
+  newTexture := LoadTextureFromImage(newImage);
+  if newTexture.id = 0 then
+  begin
+    WriteLn('ERREUR: DamageUnit - Impossible de charger la texture pour unité ', unitIndex);
+    UnloadImage(newImage);
+    Exit;
+  end;
+
+  // Mettre à jour limage et latexture
+  Game.Units[unitIndex].limage := newImage;
+  Game.Units[unitIndex].latexture := newTexture;
+  WriteLn('DEBUG: DamageUnit - Nouvelle texture chargée pour unité ', unitIndex);
+
+  // Mettre à jour les dimensions de la texture
+  Game.Units[unitIndex].TextureHalfWidth := Game.Units[unitIndex].latexture.width div 2;
+  Game.Units[unitIndex].TextureHalfHeight := Game.Units[unitIndex].latexture.height div 2;
+
+  // Mettre à jour BtnPerim
+  UpdateUnitBtnPerim(unitIndex);
+  WriteLn('DEBUG: DamageUnit - BtnPerim mis à jour pour unité ', unitIndex);
 end;
 
 procedure DestroyUnit(unitIndex: Integer);
@@ -1797,6 +1954,7 @@ begin
             Game.Units[unitID].EtatUnite := 0;
             Game.Units[unitID].Force := Game.Units[unitID].TypeUnite.forceDem;
             UnloadTexture(Game.Units[unitID].latexture);
+            UnloadImage(Game.Units[unitid].limage);
             Game.Units[unitID].limage := LoadImage(Game.Units[unitID].FileimageAbime);
             Game.Units[unitID].latexture := LoadTextureFromImage(Game.Units[unitID].limage);
             UpdateUnitBtnPerim(unitID);
@@ -2669,5 +2827,6 @@ begin
       camera.target.y := bottomLimit;
   end;
 end;
+
 end.
 
