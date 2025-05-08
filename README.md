@@ -3,7 +3,7 @@ Wargame fashioned old school in the darkAges. You can execute, but movement and 
 not implemented.  Setup of units can be deployed at random or manually. 2 players Human versus
 IA.
 
- steps finishes: naval, food supplies, music, material fighting  . Next step :  human units figthing.
+ steps finished: All major functions are done and you can play human vs human  . Next step : About the Beffroi unit and test and remove bug.
 
 
 Some pictures of the game
