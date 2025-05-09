@@ -263,267 +263,42 @@ begin
 end;
 function ExecuteUnitMovement(numplayer: Integer): Boolean;
 var
-  i, j, startIndex, endIndex: Integer;
-  foundMovableUnit: Boolean;
-  newHexID, normalizedHexID, neighborID: Integer;
+  i, startIndex, endIndex: Integer;
   terrainCost: TTerrainCost;
-  isSpecialUnit, isPresentUnitSpecial: Boolean;
-  blockingUnitIndex: Integer;
 begin
-  // Déterminer les limites de l'armée en fonction du joueur
+  // Déterminer les limites de l'armée
   if numplayer = 1 then
   begin
     startIndex := 1;
-    endIndex := 40; // Attaquants : unités 1 à 40
+    endIndex := 40;
   end
   else
   begin
     startIndex := 41;
-    endIndex := 68; // Défenseurs : unités 41 à 68
+    endIndex := 68;
   end;
 
-  // Parcourir les unités pour vérifier si au moins une peut bouger
-  foundMovableUnit := False;
-  for i := startIndex to endIndex do
-  begin
-    if Game.Units[i].HasMoveOrder and not Game.Units[i].tourMouvementTermine then
-    begin
-      foundMovableUnit := True;
-      Break;
-    end;
-  end;
-
-  // Si aucune unité ne peut bouger, sortir de la phase
-  if not foundMovableUnit then
+  // Vérifier s'il y a des unités à déplacer
+  if not HasMovableUnits(startIndex, endIndex) then
   begin
     Result := True;
     Exit;
   end;
 
-  // Traiter le mouvement de toutes les unités qui peuvent bouger
+  // Traiter chaque unité
   for i := startIndex to endIndex do
   begin
     if Game.Units[i].HasMoveOrder and not Game.Units[i].tourMouvementTermine then
     begin
-      // Traiter jusqu'à vitesseInitiale points pour cette unité
-      j := 0;
-      while j < Game.Units[i].vitesseInitiale do
+      if ProcessUnitMovement(i, numplayer) then
       begin
-        // Vérifier si on a atteint la fin du chemin
-        if Game.Units[i].CurrentPathIndex >= Length(Game.Units[i].chemin) then
-        begin
-          // Positionner l'unité sur HexagoneCible et terminer, en centrant l'unité
-          Game.Units[i].PositionActuelle := Vector2Create(
-            Hexagons[Game.Units[i].HexagoneCible].CenterX - Game.Units[i].TextureHalfWidth,
-            Hexagons[Game.Units[i].HexagoneCible].CenterY - Game.Units[i].TextureHalfHeight
-          );
-          Game.Units[i].HexagoneActuel := Game.Units[i].HexagoneCible;
-          Game.Units[i].HasMoveOrder := False;
-          Game.Units[i].tourMouvementTermine := True;
-          Game.Units[i].hasStopped := False;
-          UpdateUnitBtnPerim(i);
-          if (i in [67, 68]) and (Game.Units[i].HexagoneActuel = Game.Units[i].HexagoneDepart) then
-          begin
-            Game.Units[i].IsLoaded := True;
-            AddMessage('Bateau ' + IntToStr(i) + ' a rechargé sur hexagone ' + IntToStr(Game.Units[i].HexagoneDepart));
-          end;
-          Break;
-        end;
-
-        // Mettre à jour la position actuelle, en centrant l'unité
-        Game.Units[i].PositionActuelle := Vector2Create(
-          Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.x - Game.Units[i].TextureHalfWidth,
-          Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.y - Game.Units[i].TextureHalfHeight
-        );
-
-        // Mettre à jour BtnPerim après avoir changé la position
-        UpdateUnitBtnPerim(i);
-
-        // Vérifier si on change d'hexagone
-        newHexID := Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].Hexbrut;
-        if (Game.Units[i].CurrentPathIndex = 0) or
-           (newHexID <> Game.Units[i].chemin[Game.Units[i].CurrentPathIndex - 1].Hexbrut) then
-        begin
-          // Normaliser newHexID pour obtenir l'hexagone réel (sans objet)
-          normalizedHexID := newHexID;
-          if newHexID > 832 then
-            normalizedHexID := newHexID mod 1000; // Retirer l'objet (par exemple, 1832 -> 832)
-
-          // 1. Vérification de Hexbrut
-          if newHexID > 832 then
-          begin
-            // Revenir au point précédent si on n'est pas au début du chemin
-            if Game.Units[i].CurrentPathIndex > 0 then
-            begin
-              Dec(Game.Units[i].CurrentPathIndex);
-              Game.Units[i].PositionActuelle := Vector2Create(
-                Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.x - Game.Units[i].TextureHalfWidth,
-                Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.y - Game.Units[i].TextureHalfHeight
-              );
-              UpdateUnitBtnPerim(i);
-            end;
-            Game.Units[i].tourMouvementTermine := True;
-            Break;
-          end;
-
-          // 2. Vérification du coût
-          terrainCost := GetTerrainCost(Hexagons[normalizedHexID].TerrainType);
-          if Game.Units[i].distanceMaxi <= terrainCost.MovementCost then
-          begin
-            // Revenir au point précédent si on n'est pas au début du chemin
-            if Game.Units[i].CurrentPathIndex > 0 then
-            begin
-              Dec(Game.Units[i].CurrentPathIndex);
-              Game.Units[i].PositionActuelle := Vector2Create(
-                Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.x - Game.Units[i].TextureHalfWidth,
-                Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.y - Game.Units[i].TextureHalfHeight
-              );
-              UpdateUnitBtnPerim(i);
-            end;
-            Game.Units[i].tourMouvementTermine := True;
-            Break;
-          end;
-
-          // 3. Vérification du terrain
-          if (Game.Units[i].TypeUnite.lenom = 'bateau') and (Hexagons[normalizedHexID].TerrainType <> 'mer') then
-          begin
-            // Revenir au point précédent si on n'est pas au début du chemin
-            if Game.Units[i].CurrentPathIndex > 0 then
-            begin
-              Dec(Game.Units[i].CurrentPathIndex);
-              Game.Units[i].PositionActuelle := Vector2Create(
-                Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.x - Game.Units[i].TextureHalfWidth,
-                Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.y - Game.Units[i].TextureHalfHeight
-              );
-              UpdateUnitBtnPerim(i);
-            end;
-            Game.Units[i].tourMouvementTermine := True;
-            Break;
-          end;
-          if (Game.Units[i].TypeUnite.lenom <> 'bateau') and (Hexagons[normalizedHexID].TerrainType = 'mer') then
-          begin
-            // Revenir au point précédent si on n'est pas au début du chemin
-            if Game.Units[i].CurrentPathIndex > 0 then
-            begin
-              Dec(Game.Units[i].CurrentPathIndex);
-              Game.Units[i].PositionActuelle := Vector2Create(
-                Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.x - Game.Units[i].TextureHalfWidth,
-                Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.y - Game.Units[i].TextureHalfHeight
-              );
-              UpdateUnitBtnPerim(i);
-            end;
-            Game.Units[i].tourMouvementTermine := True;
-            Break;
-          end;
-
-          // 4. Vérification de l'empilement
-          blockingUnitIndex := -1;
-          for j := startIndex to endIndex do
-          begin
-            if (j <> i) and (Game.Units[j].HexagoneActuel = normalizedHexID) then
-            begin
-              blockingUnitIndex := j;
-              Break;
-            end;
-          end;
-          if blockingUnitIndex <> -1 then
-          begin
-            // Vérifier si l'une des unités est spéciale
-            isSpecialUnit := (Game.Units[i].TypeUnite.Id in [4, 5, 13, 14]); // Duc, Lieutenant, Comte, Chef Milicien
-            isPresentUnitSpecial := (Game.Units[blockingUnitIndex].TypeUnite.Id in [4, 5, 13, 14]);
-            if not (isSpecialUnit or isPresentUnitSpecial) then
-            begin
-              // Revenir au point précédent si on n'est pas au début du chemin
-              if Game.Units[i].CurrentPathIndex > 0 then
-              begin
-                Dec(Game.Units[i].CurrentPathIndex);
-                Game.Units[i].PositionActuelle := Vector2Create(
-                  Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.x - Game.Units[i].TextureHalfWidth,
-                  Game.Units[i].chemin[Game.Units[i].CurrentPathIndex].chemin.y - Game.Units[i].TextureHalfHeight
-                );
-                UpdateUnitBtnPerim(i);
-              end;
-              Game.Units[i].hasStopped := True;
-              // Si l'unité bloquante a tmt = True, l'unité bloquée termine aussi son tour
-              if Game.Units[blockingUnitIndex].tourMouvementTermine then
-                Game.Units[i].tourMouvementTermine := True;
-              Break;
-            end;
-          end;
-
-          // 5. Vérification des unités adverses dans les voisins
-          for j := 1 to MAX_UNITS do
-          begin
-            if (Game.Units[j].numplayer <> numplayer) and
-               (Game.Units[j].HexagoneActuel <> -1) then
-            begin
-              // Normaliser les voisins pour comparer les hexagones réels
-              neighborID := Hexagons[normalizedHexID].Neighbor1;
-              if neighborID > 832 then neighborID := neighborID mod 1000;
-              if Game.Units[j].HexagoneActuel = neighborID then
-              begin
-                Game.Units[i].HexagoneActuel := normalizedHexID;
-                Game.Units[i].tourMouvementTermine := True;
-                Break;
-              end;
-              neighborID := Hexagons[normalizedHexID].Neighbor2;
-              if neighborID > 832 then neighborID := neighborID mod 1000;
-              if Game.Units[j].HexagoneActuel = neighborID then
-              begin
-                Game.Units[i].HexagoneActuel := normalizedHexID;
-                Game.Units[i].tourMouvementTermine := True;
-                Break;
-              end;
-              neighborID := Hexagons[normalizedHexID].Neighbor3;
-              if neighborID > 832 then neighborID := neighborID mod 1000;
-              if Game.Units[j].HexagoneActuel = neighborID then
-              begin
-                Game.Units[i].HexagoneActuel := normalizedHexID;
-                Game.Units[i].tourMouvementTermine := True;
-                Break;
-              end;
-              neighborID := Hexagons[normalizedHexID].Neighbor4;
-              if neighborID > 832 then neighborID := neighborID mod 1000;
-              if Game.Units[j].HexagoneActuel = neighborID then
-              begin
-                Game.Units[i].HexagoneActuel := normalizedHexID;
-                Game.Units[i].tourMouvementTermine := True;
-                Break;
-              end;
-              neighborID := Hexagons[normalizedHexID].Neighbor5;
-              if neighborID > 832 then neighborID := neighborID mod 1000;
-              if Game.Units[j].HexagoneActuel = neighborID then
-              begin
-                Game.Units[i].HexagoneActuel := normalizedHexID;
-                Game.Units[i].tourMouvementTermine := True;
-                Break;
-              end;
-              neighborID := Hexagons[normalizedHexID].Neighbor6;
-              if neighborID > 832 then neighborID := neighborID mod 1000;
-              if Game.Units[j].HexagoneActuel = neighborID then
-              begin
-                Game.Units[i].HexagoneActuel := normalizedHexID;
-                Game.Units[i].tourMouvementTermine := True;
-                Break;
-              end;
-            end;
-          end;
-
-          // Si tout est OK, mettre à jour HexagoneActuel et déduire le coût
-          if not Game.Units[i].tourMouvementTermine then
-          begin
-            Game.Units[i].HexagoneActuel := normalizedHexID;
-            Game.Units[i].distanceMaxi := Game.Units[i].distanceMaxi - terrainCost.MovementCost;
-          end;
-        end;
-
-        Inc(Game.Units[i].CurrentPathIndex);
-        Inc(j);
+        Result := True;
+        Exit;
       end;
     end;
   end;
 
-  Result := False; // Continuer la phase tant qu'il reste des unités à bouger
+  Result := False;
 end;
 procedure HandleStateTransition(currentState: TGameState; nextState: TGameState; confirmMessage: string; nextPlayerIsAttacker: Boolean; successMessage: string; condition: Boolean);
 var

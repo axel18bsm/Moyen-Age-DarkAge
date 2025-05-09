@@ -105,6 +105,7 @@ end;
     IsLoaded: Boolean; // Indique si le bateau est chargé
     IsAttacked: Boolean; // Indique si l'unité a été attaquée ce tour
     HasAttacked: Boolean; // Indique si l'unité a attaqué ce tour
+    TourPlacement: Integer; // Nouveau champ pour suivre le tour de placement du beffroi
   end;
   TPlayer = record
     PlayerType: TPlayerType; // Humain ou IA
@@ -470,6 +471,7 @@ begin
       Game.Units[unitCount].positionFinale := Vector2Create(0, 0);
       Game.Units[unitCount].IsAttacked := False;
       Game.Units[unitCount].HasAttacked := False;
+      Game.Units[unitCount].TourPlacement := -1; // Initialiser TourPlacement à -1
 
       if unitCount in [67, 68] then
       begin
